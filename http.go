@@ -25,7 +25,7 @@ func (a *Archiver) httpWorker() {
 			}
 		case THREAD:
 			fmt.Println("HTTP: received thread task" + strconv.Itoa(task.id))
-			t, err := a.imageboard.fetchThread(task)
+			t, err := a.imageboard.fetchThread(task, &a.db)
 			if err != nil {
 				fmt.Println(err)
 			} else {

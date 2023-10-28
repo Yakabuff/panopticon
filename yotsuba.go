@@ -1,14 +1,11 @@
 package main
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"sync"
 )
 
 type YotsubaCatalogPage struct {
@@ -55,7 +52,6 @@ type YotsubaPost struct {
 
 type Yotsuba struct {
 	API_ROOT string
-	mu       sync.Mutex
 }
 
 func newYotsuba() *Yotsuba {
@@ -87,10 +83,19 @@ func (y *Yotsuba) fetchCatalog(task Task) (any, error) {
 }
 
 // Fetch thread from yotsuba
-func (y *Yotsuba) fetchThread(task Task) (any, error) {
+// If thread 404, remove from thread backlog and from posts hashmap
+func (y *Yotsuba) fetchThread(task Task, db *dbClient) (any, error) {
 	resp2, err := http.Get(y.API_ROOT + "/" + task.board + "/thread/" + strconv.Itoa(task.id) + ".json")
 	if err != nil {
 		fmt.Println(err)
+	}
+	if resp2.StatusCode != 200 {
+		err := db.deleteThreadTask(task.id)
+		if err != nil {
+			return YotsubaThread{}, err
+		}
+		// Remove all posts from thread from hash store
+		return YotsubaThread{}, nil
 	}
 	defer resp2.Body.Close()
 	fmt.Println(resp2.Status)
@@ -112,44 +117,35 @@ func (y *Yotsuba) fetchMedia(task Task) (Media, error) {
 	return Media{}, nil
 }
 
-func (y *Yotsuba) threadWorker(thread any, posts map[string]struct{}, db *dbClient) error {
+func (y *Yotsuba) threadWorker(thread any, db *dbClient) error {
 	fmt.Println("Spawning Yotsuba thread worker")
-	y.mu.Lock()
-	defer y.mu.Unlock()
+
 	z := thread.(Thread)
 	board := z.Board
 	x := z.Thread.(YotsubaThread)
 	for _, t := range x.Posts {
-		id := t.No
-		hash := GetMD5Hash(board + strconv.Itoa(id))
+
 		// Check if hash in posts
-		_, ok := posts[hash]
-		if !ok {
-			if t.Resto == 0 {
-				fmt.Println("inserting thread")
-				err := db.insertThread(t.No, t.Time, t.Name, t.Trip, t.Sub, t.Com, t.Replies, t.Images)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
-			} else {
-				// Insert post
-				fmt.Println("insert post")
-				err := db.insertPost(t.No, t.Resto, t.Time, t.Name, t.Trip, t.Com)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
+
+		if t.Resto == 0 {
+			fmt.Println("inserting thread")
+			err := db.insertThread(board, t.No, t.Time, t.Name, t.Trip, t.Sub, t.Com, t.Replies, t.Images)
+			if err != nil {
+				fmt.Println(err)
+				continue
 			}
-			posts[hash] = struct{}{}
+		} else {
+			// Insert post
+			fmt.Println("insert post")
+			err := db.insertPost(board, t.No, t.Resto, t.Time, t.Name, t.Trip, t.Com)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
 		}
+
 	}
 	return nil
-}
-
-func GetMD5Hash(text string) string {
-	hash := md5.Sum([]byte(text))
-	return hex.EncodeToString(hash[:])
 }
 
 // Board worker for yotsuba

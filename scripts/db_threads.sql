@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS thread (
    sub TEXT NOT NULL,
    com TEXT NOT NULL,
    replies BIGINT NOT NULL,
-   images BIGINT NOT NULL
+   images BIGINT NOT NULL,
+   board TEXT NOT NULL
 );
 
 CREATE INDEX thread_index_no ON thread (no);

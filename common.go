@@ -3,11 +3,11 @@ package main
 import "errors"
 
 type ImageBoard interface {
-	fetchThread(Task) (any, error)
+	fetchThread(Task, *dbClient) (any, error)
 	fetchCatalog(Task) (any, error)
 	// fetchMedia(task Task) (interface{}, error)
 	getType() ImageboardType
-	threadWorker(any, map[string]struct{}, *dbClient) error
+	threadWorker(any, *dbClient) error
 	threadWatcher(db *dbClient, h chan Task)
 	boardWorker(bwc chan any, board string, db *dbClient)
 }

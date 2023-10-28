@@ -30,7 +30,6 @@ type Archiver struct {
 	threadWatcherChannel chan any
 	boardWorkerChannel   chan any
 	mediaWorkerChannel   chan Media
-	posts                map[string]struct{}
 	imageboard           ImageBoard
 	db                   dbClient
 }
@@ -51,12 +50,11 @@ func (a *Archiver) init() {
 		os.Exit(1)
 	}
 
-	a.db = dbClient{conn: db}
+	a.db = dbClient{conn: db, store: make(map[string]map[string]struct{})}
 	defer db.Close()
 	a.httpWorkerChannel = make(chan Task)
 	a.threadWorkerChannel = make(chan any)
 	a.boardWorkerChannel = make(chan any)
-	a.posts = make(map[string]struct{})
 
 	go a.httpWorker()
 	go a.threadWatcher()
@@ -92,7 +90,7 @@ func (a *Archiver) threadWorker() {
 	for {
 		t := <-a.threadWorkerChannel
 
-		a.imageboard.threadWorker(t, a.posts, &a.db)
+		a.imageboard.threadWorker(t, &a.db)
 	}
 
 }

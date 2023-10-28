@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS post (
    time BIGINT NOT NULL,
    name TEXT NOT NULL,
    trip TEXT,
-   com TEXT NOT NULL
+   com TEXT NOT NULL,
+   board TEXT NOT NULL
 );
 
 CREATE INDEX post_index_resto ON post (resto);
