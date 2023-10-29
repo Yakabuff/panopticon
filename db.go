@@ -23,10 +23,16 @@ func (d *dbClient) insertThreadTask(tt ThreadTask) error {
 	return err
 }
 
+func (d *dbClient) updateThreadTaskArchivedDate(tt ThreadTask) error {
+	stmt := "UPDATE thread_backlog SET last_archived = $1 WHERE no = $2 and board = $3"
+	_, err := d.conn.Exec(stmt, tt.LastArchived, tt.No, tt.Board)
+	return err
+}
+
 func (d *dbClient) fetchThreadTask() ([]ThreadTask, error) {
 	var tasks []ThreadTask
 	now := time.Now()
-	stmt := "SELECT no, board, last_modified, last_archived, replies, page FROM thread_backlog where last_modified > last_archived AND last_archived < $1 ORDER BY page ASC LIMIT 250"
+	stmt := "SELECT no, board, last_modified, last_archived, replies, page FROM thread_backlog where last_modified > last_archived AND last_archived < $1 ORDER BY page DESC LIMIT 250"
 	// Fetch only threads that were archived more than 10 seconds ago
 	rows, err := d.conn.Query(stmt, int(now.Unix()-10))
 	if err != nil {
@@ -50,45 +56,53 @@ func (d *dbClient) fetchThreadTask() ([]ThreadTask, error) {
 	return tasks, nil
 }
 
-func (d *dbClient) deleteThreadTask(id int) error {
-	stmt := "DELETE FROM thread_backlog where id = $1"
-	_, err := d.conn.Exec(stmt, id)
+func (d *dbClient) deleteThreadTask(tt ThreadTask) error {
+	fmt.Printf("Pruning thread task no: %d board: %s\n", tt.No, tt.Board)
+	stmt := "DELETE FROM thread_backlog where no = $1 and board = $2"
+	_, err := d.conn.Exec(stmt, tt.No, tt.Board)
 	if err != nil {
 		return err
 	}
+	// Delete all posts from thread from post store
+	fmt.Printf("Deleted thread task from store no: %d board: %s\n", tt.No, tt.Board)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.store, tt.Board+strconv.Itoa(tt.No))
 	return nil
 }
 
 func (d *dbClient) insertPost(board string, no int, resto int, time int, name string, trip string, com string) error {
 	stmt := "INSERT INTO post(no, resto, time, name, trip, com, board) values($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING;"
-	hashPost := GetMD5Hash(board + strconv.Itoa(resto) + strconv.Itoa(no))
-	hashBoardThread := GetMD5Hash(board + strconv.Itoa(resto))
+	post := strconv.Itoa(no)
+	boardThread := board + strconv.Itoa(resto)
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	_, ok := d.store[hashBoardThread][hashPost]
+	_, ok := d.store[boardThread][post]
 	if !ok {
 		_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board)
 		if err != nil {
 			return err
 		}
-		d.store[hashBoardThread][hashPost] = struct{}{}
+		d.store[boardThread][post] = struct{}{}
+	} else {
+		fmt.Printf("Post %d board %s in store: skipping", no, board)
 	}
 	return nil
 }
 
 func (d *dbClient) insertThread(board string, no int, time int, name string, trip string, sub string, com string, replies int, images int) error {
 	stmt := "INSERT INTO thread(no, time, name, trip, sub, com, replies, images, board) values($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING;"
-	hash := GetMD5Hash(board + strconv.Itoa(no))
+	boardThread := board + strconv.Itoa(no)
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	_, ok := d.store[hash]
+	_, ok := d.store[boardThread]
 	if !ok {
 		_, err := d.conn.Exec(stmt, no, time, name, trip, sub, com, replies, images, board)
 		if err != nil {
 			return err
 		}
 		// Add thread to store
-		d.store[hash] = make(map[string]struct{})
+		d.store[boardThread] = make(map[string]struct{})
 	}
 	return nil
 }

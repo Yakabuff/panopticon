@@ -37,6 +37,7 @@ func (a *Archiver) httpWorker() {
 			fmt.Println("media")
 			// a.mediaWorkerChannel <- a.imageboard.fetchMedia(task)
 		}
+		fmt.Println("HTTP: sleeping 2 seconds")
 		time.Sleep(2 * time.Second)
 	}
 }

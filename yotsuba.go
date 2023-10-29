@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 type YotsubaCatalogPage struct {
@@ -48,6 +49,7 @@ type YotsubaPost struct {
 	H            int    `json:"h"`
 	Replies      int    `json:"replies"`
 	Images       int    `json:"images"`
+	Archived     int    `json:"archived"`
 }
 
 type Yotsuba struct {
@@ -90,7 +92,8 @@ func (y *Yotsuba) fetchThread(task Task, db *dbClient) (any, error) {
 		fmt.Println(err)
 	}
 	if resp2.StatusCode != 200 {
-		err := db.deleteThreadTask(task.id)
+		fmt.Printf("Failed to fetch %d Status: %d Board: %s", task.id, resp2.StatusCode, task.board)
+		err := db.deleteThreadTask(ThreadTask{No: task.id, Board: task.board})
 		if err != nil {
 			return YotsubaThread{}, err
 		}
@@ -118,7 +121,6 @@ func (y *Yotsuba) fetchMedia(task Task) (Media, error) {
 }
 
 func (y *Yotsuba) threadWorker(thread any, db *dbClient) error {
-	fmt.Println("Spawning Yotsuba thread worker")
 
 	z := thread.(Thread)
 	board := z.Board
@@ -134,13 +136,27 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient) error {
 				fmt.Println(err)
 				continue
 			}
+			if t.Archived == 1 {
+				fmt.Printf("Yotsuba: Board %s Thread %d archived; deleting thread task\n", board, t.No)
+				err = db.deleteThreadTask(ThreadTask{No: t.No, Board: board})
+				if err != nil {
+					fmt.Println(err)
+				}
+			} else {
+				// Update thread job after updating/inserting thread
+				fmt.Printf("Yotsuba: Board %s Thread %d inserted; updating thread task\n", board, t.No)
+				time := time.Now().Unix()
+				err = db.updateThreadTaskArchivedDate(ThreadTask{No: t.No, Board: board, LastArchived: time})
+				if err != nil {
+					fmt.Println(err)
+				}
+			}
 		} else {
 			// Insert post
-			fmt.Println("insert post")
+			// fmt.Println("insert post")
 			err := db.insertPost(board, t.No, t.Resto, t.Time, t.Name, t.Trip, t.Com)
 			if err != nil {
 				fmt.Println(err)
-				continue
 			}
 		}
 
@@ -182,7 +198,7 @@ func (y *Yotsuba) threadWatcher(db *dbClient, hc chan Task) {
 			fmt.Println(err)
 			continue
 		}
-		fmt.Println(tasks)
+		// fmt.Println(tasks)
 		for _, s := range tasks {
 			hc <- Task{taskType: THREAD, board: s.Board, id: s.No}
 		}

@@ -63,9 +63,9 @@ func (a *Archiver) init() {
 		go a.threadWorker()
 	}
 
-	// for _, b := range a.boards {
-	// 	go a.watchBoard(b)
-	// }
+	for _, b := range a.boards {
+		go a.watchBoard(b)
+	}
 
 	select {}
 }

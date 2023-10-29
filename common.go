@@ -44,7 +44,7 @@ type ThreadTask struct {
 	No           int
 	Board        string
 	LastModified int
-	LastArchived int
+	LastArchived int64
 	Replies      int
 	Page         int
 }
