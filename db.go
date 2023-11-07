@@ -23,12 +23,42 @@ func (d *dbClient) insertThreadTask(tt ThreadTask) error {
 	return err
 }
 
+func (d *dbClient) insertMediaTask(mt MediaTask) error {
+	stmt := "INSERT INTO media_backlog(board, file, thread_id, date_added) values ($1, $2, $3, $4) ON CONFLICT (board, file) DO NOTHING"
+	_, err := d.conn.Exec(stmt, mt.Board, mt.File, mt.DateAdded)
+	return err
+}
+
 func (d *dbClient) updateThreadTaskArchivedDate(tt ThreadTask) error {
 	stmt := "UPDATE thread_backlog SET last_archived = $1 WHERE no = $2 and board = $3"
 	_, err := d.conn.Exec(stmt, tt.LastArchived, tt.No, tt.Board)
 	return err
 }
+func (d *dbClient) fetchMediaTask() ([]MediaTask, error) {
+	var tasks []MediaTask
+	stmt := "SELECT board, file, date_added FROM media_backlog ORDER BY date_added ASC LIMIT 250"
 
+	rows, err := d.conn.Query(stmt)
+	if err != nil {
+		fmt.Println(err)
+		return tasks, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var task MediaTask
+
+		if err := rows.Scan(&task.Board, &task.File,
+			&task.DateAdded); err != nil {
+			return tasks, err
+		}
+		// fmt.Printf("Retrieved task: %d Board: %s\n", task.No, task.Board)
+		tasks = append(tasks, task)
+	}
+	if err = rows.Err(); err != nil {
+		return tasks, err
+	}
+	return tasks, nil
+}
 func (d *dbClient) fetchThreadTask() ([]ThreadTask, error) {
 	var tasks []ThreadTask
 	now := time.Now()
@@ -71,6 +101,18 @@ func (d *dbClient) deleteThreadTask(tt ThreadTask) error {
 	return nil
 }
 
+func (d *dbClient) deleteMediaTask(file string, board string) error {
+	fmt.Printf("Pruning thread task file: %s board: %s\n", file, board)
+	stmt := "DELETE FROM media_backlog where file = $1 and board = $2"
+	_, err := d.conn.Exec(stmt, file, board)
+	if err != nil {
+		return err
+	}
+	// Delete all posts from thread from post store
+	fmt.Printf("Deleted thread task from store file: %s board: %s\n", file, board)
+	return nil
+}
+
 func (d *dbClient) insertPost(board string, no int, resto int, time int, name string, trip string, com string) error {
 	stmt := "INSERT INTO post(no, resto, time, name, trip, com, board) values($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING;"
 	post := strconv.Itoa(no)
@@ -103,6 +145,65 @@ func (d *dbClient) insertThread(board string, no int, time int, name string, tri
 		}
 		// Add thread to store
 		d.store[boardThread] = make(map[string]struct{})
+	}
+	return nil
+}
+
+func (d *dbClient) insertMedia(sha256 string, md5 string, w int, h int, fsize int, mime string) error {
+	stmt := "INSERT INTO file(sha256, md5, w, h, fsize, mime) values($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING;"
+	_, err := d.conn.Exec(stmt, sha256, md5, w, h, fsize, mime)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *dbClient) insertFileMapping(filename string, no int, tim int, ext string, board string) error {
+	stmt := "INSERT INTO file_mapping(filename, ext, tim, no, board) values($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING;"
+	_, err := d.conn.Exec(stmt, filename, ext, tim, no, board)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *dbClient) updateMedia(sha256 string, mime string, md5 string, w int, h int, fsize int, target string) error {
+	result := []any{}
+	stmt := "UPDATE file SET"
+	if sha256 != "" {
+		stmt += " sha256 = %s,"
+		result = append(result, sha256)
+	}
+	if mime != "" {
+		stmt += " mime = %s,"
+		result = append(result, mime)
+	}
+	if md5 != "" {
+		stmt += " md5 = %s,"
+		result = append(result, mime)
+	}
+	if w != 0 {
+		stmt += " w = %s,"
+		result = append(result, w)
+	}
+	if h != 0 {
+		stmt += " h = %s,"
+		result = append(result, h)
+	}
+	if fsize != 0 {
+		stmt += " fsize = %s,"
+		result = append(result, fsize)
+	}
+	if target == md5 {
+		stmt += " WHERE md5 = %s"
+		result = append(result, md5)
+	} else {
+		stmt += " WHERE sha256 = %s"
+		result = append(result, sha256)
+	}
+	_, err := d.conn.Exec(stmt, result...)
+	if err != nil {
+		return err
 	}
 	return nil
 }

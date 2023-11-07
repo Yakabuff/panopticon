@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru/v2"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 )
@@ -24,14 +27,14 @@ func main() {
 }
 
 type Archiver struct {
-	boards               []string
-	httpWorkerChannel    chan Task
-	threadWorkerChannel  chan any
-	threadWatcherChannel chan any
-	boardWorkerChannel   chan any
-	mediaWorkerChannel   chan Media
-	imageboard           ImageBoard
-	db                   dbClient
+	boards              []string
+	httpWorkerChannel   chan Task
+	threadWorkerChannel chan any
+	boardWorkerChannel  chan any
+	mediaWorkerChannel  chan Media
+	imageboard          ImageBoard
+	db                  dbClient
+	lru                 *lru.Cache[string, any]
 }
 
 func newArchiver() *Archiver {
@@ -49,7 +52,12 @@ func (a *Archiver) init() {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
-
+	l, err := lru.New[string, any](1000000)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	a.lru = l
 	a.db = dbClient{conn: db, store: make(map[string]map[string]struct{})}
 	defer db.Close()
 	a.httpWorkerChannel = make(chan Task)
@@ -58,16 +66,28 @@ func (a *Archiver) init() {
 
 	go a.httpWorker()
 	go a.threadWatcher()
+	go a.mediaWatcher()
 
 	for w := 0; w <= 3; w++ {
 		go a.threadWorker()
+	}
+
+	for w := 0; w <= 3; w++ {
+		go a.mediaWorker()
 	}
 
 	for _, b := range a.boards {
 		go a.watchBoard(b)
 	}
 
-	select {}
+	fmt.Println("panopticon is now running.  Press CTRL-C to exit.")
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+	<-sc
+	err = db.Close()
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 // Send task to http worker every n seconds to fetch status of board
@@ -90,9 +110,17 @@ func (a *Archiver) threadWorker() {
 	for {
 		t := <-a.threadWorkerChannel
 
-		a.imageboard.threadWorker(t, &a.db)
+		a.imageboard.threadWorker(t, &a.db, a.lru)
 	}
 
+}
+
+// Query media tasks
+func (a *Archiver) mediaWatcher() {
+	fmt.Println("Spawned media watcher")
+	for {
+		a.imageboard.mediaWatcher(&a.db, a.httpWorkerChannel)
+	}
 }
 
 // Keep track of which threads are archived/deleted/newly created.
@@ -112,4 +140,12 @@ func (a *Archiver) threadWatcher() {
 		a.imageboard.threadWatcher(&a.db, a.httpWorkerChannel)
 	}
 
+}
+
+func (a *Archiver) mediaWorker() {
+	fmt.Println("Spawned media worker")
+	for {
+		t := <-a.mediaWorkerChannel
+		a.imageboard.mediaWorker(t, &a.db)
+	}
 }

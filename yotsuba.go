@@ -3,10 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 type YotsubaCatalogPage struct {
@@ -50,14 +55,25 @@ type YotsubaPost struct {
 	Replies      int    `json:"replies"`
 	Images       int    `json:"images"`
 	Archived     int    `json:"archived"`
+	Fsize        int    `json:"fsize"`
 }
 
 type Yotsuba struct {
-	API_ROOT string
+	API_ROOT        string
+	API_IMG         string
+	ThumbnailBoards []string
+	FullImageBoards []string
 }
 
 func newYotsuba() *Yotsuba {
-	return &Yotsuba{API_ROOT: "https://a.4cdn.org"}
+	tb := os.Getenv("THUMBNAIL_BOARDS")
+	fib := os.Getenv("FULL_IMAGE_BOARDS")
+	return &Yotsuba{
+		API_ROOT:        "https://a.4cdn.org",
+		API_IMG:         "https://i.4cdn.org",
+		ThumbnailBoards: strings.Split(tb, ","),
+		FullImageBoards: strings.Split(fib, ","),
+	}
 }
 
 func (y *Yotsuba) getType() ImageboardType {
@@ -116,11 +132,29 @@ func (y *Yotsuba) fetchThread(task Task, db *dbClient) (any, error) {
 	return result, nil
 }
 
-func (y *Yotsuba) fetchMedia(task Task) (Media, error) {
-	return Media{}, nil
+// Download image/thumb and get sha256 hash and mime type
+// Insert md5 into LRU cache ASAP to prevent it from downloading again
+func (y *Yotsuba) fetchMedia(task Task, db *dbClient, lru *lru.Cache[string, any]) (Media, error) {
+
+	img, err := http.Get(y.API_IMG + "/" + task.board + "/" + task.filename)
+	if err != nil {
+		fmt.Println(err)
+	}
+	hash, err := writeFile(img.Body)
+	if err != nil {
+		fmt.Println(err)
+	}
+	body, err := io.ReadAll(img.Body)
+	if err != nil {
+		fmt.Println(err)
+	}
+	mimeType := http.DetectContentType(body)
+	defer img.Body.Close()
+	lru.Add(task.hash, nil)
+	return Media{Sha256: hash, Mime: mimeType, File: task.filename, Board: task.board}, nil
 }
 
-func (y *Yotsuba) threadWorker(thread any, db *dbClient) error {
+func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, any]) error {
 
 	z := thread.(Thread)
 	board := z.Board
@@ -159,6 +193,42 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient) error {
 				fmt.Println(err)
 			}
 		}
+		// Queue image if present in thread
+		// and hash does not already exist in LRU cache and image enabled for board
+		_, mediaCached := lru.Get(t.Md5)
+		if t.Filename != "" && !mediaCached {
+			err := db.insertFileMapping(t.Filename, t.No, t.Tim, t.Ext, board)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			err = db.insertMedia("", t.Md5, t.W, t.H, t.Fsize, "")
+			if err != nil {
+				fmt.Println(err)
+			}
+			// Insert file mapping and media info
+			if stringInSlice(board, y.FullImageBoards) {
+				err := db.insertMediaTask(MediaTask{
+					Board:     board,
+					DateAdded: time.Now().Unix(),
+					File:      strconv.Itoa(t.Tim) + "." + t.Ext,
+				})
+				if err != nil {
+					fmt.Println(err)
+				}
+			}
+
+			if stringInSlice(board, y.ThumbnailBoards) {
+				err := db.insertMediaTask(MediaTask{
+					Board:     board,
+					DateAdded: time.Now().Unix(),
+					File:      strconv.Itoa(t.Tim) + "s.jpg",
+				})
+				if err != nil {
+					fmt.Println(err)
+				}
+			}
+		}
 
 	}
 	return nil
@@ -180,7 +250,12 @@ func (y *Yotsuba) boardWorker(bwc chan any, board string, db *dbClient) {
 		z := t.(YotsubaCatalog)
 		for _, v := range z.Catalog {
 			for _, d := range v.Threads {
-				err := db.insertThreadTask(ThreadTask{No: d.No, Board: board, LastModified: d.Last_modified, Replies: d.Replies, Page: v.Page})
+				err := db.insertThreadTask(ThreadTask{
+					No:           d.No,
+					Board:        board,
+					LastModified: d.Last_modified,
+					Replies:      d.Replies,
+					Page:         v.Page})
 				if err != nil {
 					fmt.Println(err)
 				}
@@ -191,6 +266,7 @@ func (y *Yotsuba) boardWorker(bwc chan any, board string, db *dbClient) {
 	}
 }
 
+// Fetch tasks and send to http worker
 func (y *Yotsuba) threadWatcher(db *dbClient, hc chan Task) {
 	for {
 		tasks, err := db.fetchThreadTask()
@@ -203,4 +279,34 @@ func (y *Yotsuba) threadWatcher(db *dbClient, hc chan Task) {
 			hc <- Task{taskType: THREAD, board: s.Board, id: s.No}
 		}
 	}
+}
+
+// Fetch tasks and send to http worker
+func (y *Yotsuba) mediaWatcher(db *dbClient, hc chan Task) {
+	for {
+		tasks, err := db.fetchMediaTask()
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		// fmt.Println(tasks)
+		for _, s := range tasks {
+			hc <- Task{taskType: MEDIA, board: s.Board, filename: s.File}
+		}
+	}
+}
+
+// Process image: sha256, mime
+// Update file sha in file table
+// Delete image task
+func (y *Yotsuba) mediaWorker(media Media, db *dbClient) {
+	err := db.updateMedia(media.Sha256, media.Mime, media.Md5, 0, 0, 0, media.Md5)
+	if err != nil {
+		fmt.Println(err)
+	}
+	err = db.deleteMediaTask(media.File, media.Board)
+	if err != nil {
+		fmt.Println(err)
+	}
+
 }

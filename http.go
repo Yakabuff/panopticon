@@ -35,7 +35,14 @@ func (a *Archiver) httpWorker() {
 			}
 		case MEDIA:
 			fmt.Println("media")
-			// a.mediaWorkerChannel <- a.imageboard.fetchMedia(task)
+			m, err := a.imageboard.fetchMedia(task, &a.db, a.lru)
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				fmt.Println("HTTP: sending media content to mediaWorkerChannel")
+				a.mediaWorkerChannel <- m
+				fmt.Println("HTTP: sent thread content to mediaWorkerChannel")
+			}
 		}
 		fmt.Println("HTTP: sleeping 2 seconds")
 		time.Sleep(2 * time.Second)
