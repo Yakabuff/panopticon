@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -31,6 +32,14 @@ type YotsubaCatalogThread struct {
 
 type YotsubaThread struct {
 	Posts []YotsubaPost `json:"posts"`
+}
+
+type YotsubaBoards struct {
+	Boards []YotsubaBoard `json:"boards"`
+}
+
+type YotsubaBoard struct {
+	Board string `json:"board"`
 }
 
 type YotsubaPost struct {
@@ -106,7 +115,9 @@ func (y *Yotsuba) fetchThread(task Task, db *dbClient) (any, error) {
 	resp2, err := http.Get(y.API_ROOT + "/" + task.board + "/thread/" + strconv.Itoa(task.id) + ".json")
 	if err != nil {
 		fmt.Println(err)
+		return nil, err
 	}
+	defer resp2.Body.Close()
 	if resp2.StatusCode != 200 {
 		fmt.Printf("Failed to fetch %d Status: %d Board: %s", task.id, resp2.StatusCode, task.board)
 		err := db.deleteThreadTask(ThreadTask{No: task.id, Board: task.board})
@@ -116,7 +127,7 @@ func (y *Yotsuba) fetchThread(task Task, db *dbClient) (any, error) {
 		// Remove all posts from thread from hash store
 		return YotsubaThread{}, nil
 	}
-	defer resp2.Body.Close()
+
 	fmt.Println(resp2.Status)
 	body2, err := ioutil.ReadAll(resp2.Body)
 	if err != nil {
@@ -133,25 +144,71 @@ func (y *Yotsuba) fetchThread(task Task, db *dbClient) (any, error) {
 }
 
 // Download image/thumb and get sha256 hash and mime type
-// Insert md5 into LRU cache ASAP to prevent it from downloading again
+// Insert md5 of media into LRU cache ASAP to prevent img/thumbnail from downloading again
 func (y *Yotsuba) fetchMedia(task Task, db *dbClient, lru *lru.Cache[string, any]) (Media, error) {
-
+	isThumbnail := y.isThumbnail(task.filename)
 	img, err := http.Get(y.API_IMG + "/" + task.board + "/" + task.filename)
 	if err != nil {
+		fmt.Println("Media req failed")
+		fmt.Println(err)
+		return Media{}, err
+	}
+
+	defer img.Body.Close()
+	var shouldWrite bool
+	if isThumbnail && stringInSlice(task.board, y.ThumbnailBoards) ||
+		!isThumbnail && stringInSlice(task.board, y.FullImageBoards) ||
+		isThumbnail && stringInSlice(task.board, y.FullImageBoards) {
+		shouldWrite = true
+	} else {
+		shouldWrite = false
+	}
+	body2 := img.Body
+	hash, err := writeFile(img.Body, isThumbnail, task.hash, shouldWrite)
+	if err != nil {
+		fmt.Println("Failed to write file")
 		fmt.Println(err)
 	}
-	hash, err := writeFile(img.Body)
+	body, err := io.ReadAll(body2)
+
 	if err != nil {
-		fmt.Println(err)
-	}
-	body, err := io.ReadAll(img.Body)
-	if err != nil {
+		fmt.Println("Failed to fetch image from req body")
 		fmt.Println(err)
 	}
 	mimeType := http.DetectContentType(body)
 	defer img.Body.Close()
 	lru.Add(task.hash, nil)
-	return Media{Sha256: hash, Mime: mimeType, File: task.filename, Board: task.board}, nil
+	return Media{Sha256: hash, Mime: mimeType, Md5: task.hash, File: task.filename, Board: task.board, IsThumbnail: isThumbnail}, nil
+}
+
+// https://a.4cdn.org/boards.json
+func (y *Yotsuba) fetchBoards() ([]string, error) {
+	resp, err := http.Get(y.API_ROOT + "/" + "boards.json")
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		fmt.Println("Could not fetch boards")
+		return nil, errors.New("could not fetch board")
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println(err)
+	}
+	var boards YotsubaBoards
+	if err := json.Unmarshal(body, &boards); err != nil { // Parse []byte to go struct pointer
+		fmt.Println(err)
+		fmt.Println("Can not unmarshal JSON")
+		return nil, err
+	}
+	var res []string
+	for _, t := range boards.Boards {
+		res = append(res, t.Board)
+	}
+	// fmt.Println(result)
+	return res, nil
 }
 
 func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, any]) error {
@@ -197,37 +254,46 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, 
 		// and hash does not already exist in LRU cache and image enabled for board
 		_, mediaCached := lru.Get(t.Md5)
 		if t.Filename != "" && !mediaCached {
-			err := db.insertFileMapping(t.Filename, t.No, t.Tim, t.Ext, board)
-			if err != nil {
-				fmt.Println(err)
-			}
-
-			err = db.insertMedia("", t.Md5, t.W, t.H, t.Fsize, "")
-			if err != nil {
-				fmt.Println(err)
-			}
 			// Insert file mapping and media info
-			if stringInSlice(board, y.FullImageBoards) {
-				err := db.insertMediaTask(MediaTask{
-					Board:     board,
-					DateAdded: time.Now().Unix(),
-					File:      strconv.Itoa(t.Tim) + "." + t.Ext,
-				})
-				if err != nil {
-					fmt.Println(err)
-				}
+			fileid, err := db.insertMedia("", t.Md5, t.W, t.H, t.Fsize, "")
+			if err != nil {
+				fmt.Println(err)
 			}
-
-			if stringInSlice(board, y.ThumbnailBoards) {
-				err := db.insertMediaTask(MediaTask{
-					Board:     board,
-					DateAdded: time.Now().Unix(),
-					File:      strconv.Itoa(t.Tim) + "s.jpg",
-				})
-				if err != nil {
-					fmt.Println(err)
-				}
+			err = db.insertFileMapping(t.Filename, t.No, t.Tim, t.Ext, board, fileid)
+			if err != nil {
+				fmt.Println(err)
 			}
+			//Queue image
+			err = db.insertMediaTask(MediaTask{
+				Board:     board,
+				DateAdded: time.Now().Unix(),
+				File:      strconv.Itoa(t.Tim) + t.Ext,
+				Hash:      t.Md5,
+			})
+			if err != nil {
+				fmt.Println(err)
+			}
+			// if stringInSlice(board, y.FullImageBoards) {
+			// 	err := db.insertMediaTask(MediaTask{
+			// 		Board:     board,
+			// 		DateAdded: time.Now().Unix(),
+			// 		File:      strconv.Itoa(t.Tim) + t.Ext,
+			// 	})
+			// 	if err != nil {
+			// 		fmt.Println(err)
+			// 	}
+			// }
+			// // Queue thumbnail
+			// if stringInSlice(board, y.ThumbnailBoards) {
+			// 	err := db.insertMediaTask(MediaTask{
+			// 		Board:     board,
+			// 		DateAdded: time.Now().Unix(),
+			// 		File:      strconv.Itoa(t.Tim) + "s.jpg",
+			// 	})
+			// 	if err != nil {
+			// 		fmt.Println(err)
+			// 	}
+			// }
 		}
 
 	}
@@ -262,7 +328,7 @@ func (y *Yotsuba) boardWorker(bwc chan any, board string, db *dbClient) {
 			}
 		}
 
-		fmt.Println("boardworker: finished processing new/modified threads")
+		fmt.Println("boardWorker: finished processing new/modified threads")
 	}
 }
 
@@ -291,7 +357,7 @@ func (y *Yotsuba) mediaWatcher(db *dbClient, hc chan Task) {
 		}
 		// fmt.Println(tasks)
 		for _, s := range tasks {
-			hc <- Task{taskType: MEDIA, board: s.Board, filename: s.File}
+			hc <- Task{taskType: MEDIA, board: s.Board, filename: s.File, hash: s.Hash}
 		}
 	}
 }
@@ -299,7 +365,23 @@ func (y *Yotsuba) mediaWatcher(db *dbClient, hc chan Task) {
 // Process image: sha256, mime
 // Update file sha in file table
 // Delete image task
+// If thumbnail enabled, queue thumbnail
 func (y *Yotsuba) mediaWorker(media Media, db *dbClient) {
+	if !media.IsThumbnail && stringInSlice(media.Board, y.ThumbnailBoards) ||
+		!media.IsThumbnail && stringInSlice(media.Board, y.FullImageBoards) {
+		//Queue thumbnail
+		fmt.Println("QUEUING THUMBNAIL")
+		tmp := strings.Split(media.File, ".")
+		filename := tmp[0] + "s.jpg"
+		err := db.insertMediaTask(MediaTask{
+			Board:     media.Board,
+			DateAdded: time.Now().Unix(),
+			File:      filename,
+		})
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
 	err := db.updateMedia(media.Sha256, media.Mime, media.Md5, 0, 0, 0, media.Md5)
 	if err != nil {
 		fmt.Println(err)
@@ -309,4 +391,8 @@ func (y *Yotsuba) mediaWorker(media Media, db *dbClient) {
 		fmt.Println(err)
 	}
 
+}
+
+func (y *Yotsuba) isThumbnail(file string) bool {
+	return strings.HasSuffix(file, "s.jpg")
 }

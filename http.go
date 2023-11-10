@@ -34,7 +34,7 @@ func (a *Archiver) httpWorker() {
 				fmt.Println("HTTP: sent thread content to theadWorkerChannel")
 			}
 		case MEDIA:
-			fmt.Println("media")
+			fmt.Println("HTTP: received media task " + task.filename)
 			m, err := a.imageboard.fetchMedia(task, &a.db, a.lru)
 			if err != nil {
 				fmt.Println(err)
@@ -42,6 +42,16 @@ func (a *Archiver) httpWorker() {
 				fmt.Println("HTTP: sending media content to mediaWorkerChannel")
 				a.mediaWorkerChannel <- m
 				fmt.Println("HTTP: sent thread content to mediaWorkerChannel")
+			}
+
+		case BOARDMETA:
+			m, err := a.imageboard.fetchBoards()
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				fmt.Println("HTTP: sending board content to boardMetaWorkerChannel")
+				a.boardMetaWorkerChannel <- m
+				fmt.Println("HTTP: sent board content to boardMetaWorkerChannel")
 			}
 		}
 		fmt.Println("HTTP: sleeping 2 seconds")

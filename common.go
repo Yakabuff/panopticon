@@ -14,6 +14,7 @@ import (
 
 type ImageBoard interface {
 	fetchThread(Task, *dbClient) (any, error)
+	fetchBoards() ([]string, error)
 	fetchCatalog(Task) (any, error)
 	fetchMedia(Task, *dbClient, *lru.Cache[string, any]) (Media, error)
 	getType() ImageboardType
@@ -22,6 +23,7 @@ type ImageBoard interface {
 	mediaWatcher(db *dbClient, h chan Task)
 	mediaWorker(media Media, db *dbClient)
 	boardWorker(bwc chan any, board string, db *dbClient)
+	isThumbnail(filename string) bool
 }
 
 type Post struct {
@@ -65,6 +67,7 @@ type MediaTask struct {
 	Board     string
 	File      string
 	DateAdded int64
+	Hash      string
 }
 
 type Thread struct {
@@ -73,14 +76,15 @@ type Thread struct {
 }
 
 type Media struct {
-	W      int
-	H      int
-	Md5    string
-	Sha256 string
-	Fsize  int
-	Mime   string
-	File   string
-	Board  string
+	W           int
+	H           int
+	Md5         string
+	Sha256      string
+	Fsize       int
+	Mime        string
+	File        string
+	Board       string
+	IsThumbnail bool
 }
 
 type FileMapping struct {
@@ -112,16 +116,16 @@ type Task struct {
 
 type Board struct {
 	board    string
-	title    string
 	unlisted bool
 }
 type TaskType int
 
 const (
-	THREAD  TaskType = iota // 0
-	BOARD   TaskType = iota // 1
-	MEDIA   TaskType = iota // 2
-	ARCHIVE TaskType = iota // 3
+	THREAD    TaskType = iota // 0
+	BOARD     TaskType = iota // 1
+	MEDIA     TaskType = iota // 2
+	ARCHIVE   TaskType = iota // 3
+	BOARDMETA TaskType = iota // 4
 )
 
 type ImageboardType int
@@ -131,18 +135,33 @@ const (
 )
 
 // Write file to disk and return sha256 hash
-func writeFile(reader io.Reader) (string, error) {
-	path := os.Getenv("MEDIA_PATH")
+func writeFile(reader io.Reader, isThumbnail bool, fullsizeHash string, shouldWrite bool) (string, error) {
+	var path string
+	if isThumbnail {
+		path = os.Getenv("THUMB_PATH")
+	} else {
+		path = os.Getenv("MEDIA_PATH")
+	}
+
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {
+		fmt.Println("failed to mkdir")
 		return "", err
 	}
 	body, err := io.ReadAll(reader)
+	if err != nil {
+		return "", err
+	}
 	body2 := bytes.NewReader(body)
 	//hash byte array
 	sum := fmt.Sprintf("%x", sha256.Sum256(body))
+
+	if !shouldWrite {
+		return sum, nil
+	}
+
 	//create file with hash as file name
-	newpath := filepath.Join(".", path, sum)
+	newpath := filepath.Join(path, sum)
 	_, errExist := os.Stat(newpath)
 	if errExist == nil {
 		//If exist, return hash and do not save file
@@ -150,20 +169,22 @@ func writeFile(reader io.Reader) (string, error) {
 	}
 
 	if errors.Is(errExist, os.ErrNotExist) {
-		//If file does not exist, download file and return sum
+		//If file does not exist, save file and return sum
 		out, err := os.Create(newpath)
 		if err != nil {
+			fmt.Println("failed to create file")
 			return "", err
 		}
 		defer out.Close()
 		// Write the body to file
 		_, err = io.Copy(out, body2)
 		if err != nil {
+			fmt.Println("failed to copy content to file")
 			return sum, err
 		}
 		return sum, nil
 	}
-	return sum, err
+	return sum, nil
 }
 
 func stringInSlice(a string, list []string) bool {

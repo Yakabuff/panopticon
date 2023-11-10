@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -17,6 +18,12 @@ type dbClient struct {
 	mu    sync.Mutex
 }
 
+func (d *dbClient) insertBoard(b Board) error {
+	stmt := "INSERT INTO boards(board, unlisted) values($1, $2) ON CONFLICT DO NOTHING"
+	_, err := d.conn.Exec(stmt, b.board, b.unlisted)
+	return err
+}
+
 func (d *dbClient) insertThreadTask(tt ThreadTask) error {
 	stmt := "INSERT INTO thread_backlog(board, no, last_modified, last_archived, replies, page) values ($1, $2, $3, $4, $5, $6) ON CONFLICT (board, no) DO UPDATE SET last_modified = $3, page = $6"
 	_, err := d.conn.Exec(stmt, tt.Board, tt.No, tt.LastModified, tt.LastArchived, tt.Replies, tt.Page)
@@ -24,8 +31,8 @@ func (d *dbClient) insertThreadTask(tt ThreadTask) error {
 }
 
 func (d *dbClient) insertMediaTask(mt MediaTask) error {
-	stmt := "INSERT INTO media_backlog(board, file, thread_id, date_added) values ($1, $2, $3, $4) ON CONFLICT (board, file) DO NOTHING"
-	_, err := d.conn.Exec(stmt, mt.Board, mt.File, mt.DateAdded)
+	stmt := "INSERT INTO media_backlog(board, file, date_added, hash) values ($1, $2, $3, $4) ON CONFLICT (board, file) DO NOTHING"
+	_, err := d.conn.Exec(stmt, mt.Board, mt.File, mt.DateAdded, mt.Hash)
 	return err
 }
 
@@ -36,7 +43,7 @@ func (d *dbClient) updateThreadTaskArchivedDate(tt ThreadTask) error {
 }
 func (d *dbClient) fetchMediaTask() ([]MediaTask, error) {
 	var tasks []MediaTask
-	stmt := "SELECT board, file, date_added FROM media_backlog ORDER BY date_added ASC LIMIT 250"
+	stmt := "SELECT board, file, date_added, hash FROM media_backlog ORDER BY date_added ASC LIMIT 250"
 
 	rows, err := d.conn.Query(stmt)
 	if err != nil {
@@ -48,7 +55,7 @@ func (d *dbClient) fetchMediaTask() ([]MediaTask, error) {
 		var task MediaTask
 
 		if err := rows.Scan(&task.Board, &task.File,
-			&task.DateAdded); err != nil {
+			&task.DateAdded, &task.Hash); err != nil {
 			return tasks, err
 		}
 		// fmt.Printf("Retrieved task: %d Board: %s\n", task.No, task.Board)
@@ -125,7 +132,12 @@ func (d *dbClient) insertPost(board string, no int, resto int, time int, name st
 		if err != nil {
 			return err
 		}
-		d.store[boardThread][post] = struct{}{}
+		if d.store[boardThread] == nil {
+			d.store[boardThread] = make(map[string]struct{})
+			d.store[boardThread][post] = struct{}{}
+		} else {
+			d.store[boardThread][post] = struct{}{}
+		}
 	} else {
 		fmt.Printf("Post %d board %s in store: skipping", no, board)
 	}
@@ -149,18 +161,19 @@ func (d *dbClient) insertThread(board string, no int, time int, name string, tri
 	return nil
 }
 
-func (d *dbClient) insertMedia(sha256 string, md5 string, w int, h int, fsize int, mime string) error {
-	stmt := "INSERT INTO file(sha256, md5, w, h, fsize, mime) values($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING;"
-	_, err := d.conn.Exec(stmt, sha256, md5, w, h, fsize, mime)
+func (d *dbClient) insertMedia(sha256 string, md5 string, w int, h int, fsize int, mime string) (int64, error) {
+	stmt := "INSERT INTO file(sha256, md5, w, h, fsize, mime) values($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING RETURNING id;"
+	var id int64
+	err := d.conn.QueryRow(stmt, sha256, md5, w, h, fsize, mime).Scan(&id)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return nil
+	return id, nil
 }
 
-func (d *dbClient) insertFileMapping(filename string, no int, tim int, ext string, board string) error {
-	stmt := "INSERT INTO file_mapping(filename, ext, tim, no, board) values($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING;"
-	_, err := d.conn.Exec(stmt, filename, ext, tim, no, board)
+func (d *dbClient) insertFileMapping(filename string, no int, tim int, ext string, board string, fileid int64) error {
+	stmt := "INSERT INTO file_mapping(filename, ext, tim, no, board, fileid) values($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING;"
+	_, err := d.conn.Exec(stmt, filename, ext, tim, no, board, fileid)
 	if err != nil {
 		return err
 	}
@@ -171,36 +184,39 @@ func (d *dbClient) updateMedia(sha256 string, mime string, md5 string, w int, h 
 	result := []any{}
 	stmt := "UPDATE file SET"
 	if sha256 != "" {
-		stmt += " sha256 = %s,"
 		result = append(result, sha256)
+		stmt += fmt.Sprintf(" sha256 = $%d,", len(result))
 	}
 	if mime != "" {
-		stmt += " mime = %s,"
 		result = append(result, mime)
+		stmt += fmt.Sprintf(" mime = $%d,", len(result))
 	}
 	if md5 != "" {
-		stmt += " md5 = %s,"
-		result = append(result, mime)
+		result = append(result, md5)
+		stmt += fmt.Sprintf(" md5 = $%d,", len(result))
 	}
 	if w != 0 {
-		stmt += " w = %s,"
 		result = append(result, w)
+		stmt += fmt.Sprintf(" w = $%d,", len(result))
 	}
 	if h != 0 {
-		stmt += " h = %s,"
 		result = append(result, h)
+		stmt += fmt.Sprintf(" h = $%d,", len(result))
 	}
 	if fsize != 0 {
-		stmt += " fsize = %s,"
 		result = append(result, fsize)
+		stmt += fmt.Sprintf(" fsize = $%d,", len(result))
 	}
+	stmt = strings.TrimSuffix(stmt, ",")
 	if target == md5 {
-		stmt += " WHERE md5 = %s"
 		result = append(result, md5)
+		stmt += fmt.Sprintf(" WHERE md5 = $%d", len(result))
 	} else {
-		stmt += " WHERE sha256 = %s"
 		result = append(result, sha256)
+		stmt += fmt.Sprintf(" sha256 = $%d", len(result))
 	}
+	fmt.Println(stmt)
+	fmt.Println(result)
 	_, err := d.conn.Exec(stmt, result...)
 	if err != nil {
 		return err
