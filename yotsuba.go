@@ -163,17 +163,17 @@ func (y *Yotsuba) fetchMedia(task Task, db *dbClient, lru *lru.Cache[string, any
 	} else {
 		shouldWrite = false
 	}
-	body2 := img.Body
-	hash, err := writeFile(img.Body, isThumbnail, task.hash, shouldWrite)
+	body, err := io.ReadAll(img.Body)
+	if err != nil {
+		fmt.Println("Failed to read request body")
+		fmt.Println(err)
+		return Media{}, err
+	}
+	hash, err := writeFile(body, isThumbnail, task.hash, shouldWrite)
 	if err != nil {
 		fmt.Println("Failed to write file")
 		fmt.Println(err)
-	}
-	body, err := io.ReadAll(body2)
-
-	if err != nil {
-		fmt.Println("Failed to fetch image from req body")
-		fmt.Println(err)
+		return Media{}, err
 	}
 	mimeType := http.DetectContentType(body)
 	defer img.Body.Close()

@@ -135,7 +135,7 @@ const (
 )
 
 // Write file to disk and return sha256 hash
-func writeFile(reader io.Reader, isThumbnail bool, fullsizeHash string, shouldWrite bool) (string, error) {
+func writeFile(bytez []byte, isThumbnail bool, fullsizeHash string, shouldWrite bool) (string, error) {
 	var path string
 	if isThumbnail {
 		path = os.Getenv("THUMB_PATH")
@@ -148,13 +148,8 @@ func writeFile(reader io.Reader, isThumbnail bool, fullsizeHash string, shouldWr
 		fmt.Println("failed to mkdir")
 		return "", err
 	}
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		return "", err
-	}
-	body2 := bytes.NewReader(body)
 	//hash byte array
-	sum := fmt.Sprintf("%x", sha256.Sum256(body))
+	sum := fmt.Sprintf("%x", sha256.Sum256(bytez))
 
 	if !shouldWrite {
 		return sum, nil
@@ -177,6 +172,7 @@ func writeFile(reader io.Reader, isThumbnail bool, fullsizeHash string, shouldWr
 		}
 		defer out.Close()
 		// Write the body to file
+		body2 := bytes.NewReader(bytez)
 		_, err = io.Copy(out, body2)
 		if err != nil {
 			fmt.Println("failed to copy content to file")
