@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	lru "github.com/hashicorp/golang-lru/v2"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
@@ -61,7 +62,7 @@ func (a *Archiver) init() {
 	}
 	a.lru = l
 
-	a.db = dbClient{conn: db, store: make(map[string]map[string]struct{})}
+	a.db = dbClient{conn: db, store: make(map[string]mapset.Set[string])}
 	defer db.Close()
 
 	a.httpWorkerChannel = make(chan Task)

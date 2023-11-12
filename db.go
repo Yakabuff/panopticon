@@ -9,12 +9,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	mapset "github.com/deckarep/golang-set/v2"
 )
 
 type dbClient struct {
 	conn *sql.DB
 	// hash(board + thread id) -> set(post ids)
-	store map[string]map[string]struct{}
+	store map[string]mapset.Set[string]
 	mu    sync.Mutex
 }
 
@@ -109,14 +111,12 @@ func (d *dbClient) deleteThreadTask(tt ThreadTask) error {
 }
 
 func (d *dbClient) deleteMediaTask(file string, board string) error {
-	fmt.Printf("Pruning thread task file: %s board: %s\n", file, board)
+	fmt.Printf("Pruning media task file: %s board: %s\n", file, board)
 	stmt := "DELETE FROM media_backlog where file = $1 and board = $2"
 	_, err := d.conn.Exec(stmt, file, board)
 	if err != nil {
 		return err
 	}
-	// Delete all posts from thread from post store
-	fmt.Printf("Deleted thread task from store file: %s board: %s\n", file, board)
 	return nil
 }
 
@@ -126,20 +126,25 @@ func (d *dbClient) insertPost(board string, no int, resto int, time int, name st
 	boardThread := board + strconv.Itoa(resto)
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	_, ok := d.store[boardThread][post]
+	_, ok := d.store[boardThread]
+	// Check if key exists
 	if !ok {
 		_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board)
 		if err != nil {
 			return err
 		}
 		if d.store[boardThread] == nil {
-			d.store[boardThread] = make(map[string]struct{})
-			d.store[boardThread][post] = struct{}{}
+			d.store[boardThread] = mapset.NewSet[string]()
+			d.store[boardThread].Add(post)
 		} else {
-			d.store[boardThread][post] = struct{}{}
+			d.store[boardThread].Add(post)
 		}
 	} else {
-		fmt.Printf("Post %d board %s in store: skipping", no, board)
+		if d.store[boardThread].Contains(post) {
+			fmt.Printf("Post %d board %s in store: skipping", no, board)
+		} else {
+			d.store[boardThread].Add(post)
+		}
 	}
 	return nil
 }
@@ -156,7 +161,7 @@ func (d *dbClient) insertThread(board string, no int, time int, name string, tri
 			return err
 		}
 		// Add thread to store
-		d.store[boardThread] = make(map[string]struct{})
+		d.store[boardThread] = mapset.NewSet[string]()
 	}
 	return nil
 }
