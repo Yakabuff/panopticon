@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 )
@@ -54,7 +55,11 @@ func (a *Archiver) httpWorker() {
 				fmt.Println("HTTP: sent board content to boardMetaWorkerChannel")
 			}
 		}
-		fmt.Println("HTTP: sleeping 2 seconds")
-		time.Sleep(2 * time.Second)
+		sleep, err := strconv.Atoi(os.Getenv("HTTP_SLEEP"))
+		if err != nil {
+			sleep = 1
+		}
+		fmt.Printf("HTTP: sleeping %d second\n", sleep)
+		time.Sleep(time.Duration(sleep) * time.Second)
 	}
 }
