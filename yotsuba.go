@@ -91,7 +91,7 @@ func (y *Yotsuba) getType() ImageboardType {
 
 func (y *Yotsuba) fetchCatalog(task Task) (any, error) {
 	resp, err := http.Get(y.API_ROOT + "/" + task.board + "/threads.json")
-	if err != nil {
+	if err != nil || resp.StatusCode != 200 {
 		fmt.Println(err)
 	}
 	defer resp.Body.Close()
@@ -148,7 +148,7 @@ func (y *Yotsuba) fetchThread(task Task, db *dbClient) (any, error) {
 func (y *Yotsuba) fetchMedia(task Task, db *dbClient, lru *lru.Cache[string, any]) (Media, error) {
 	isThumbnail := y.isThumbnail(task.filename)
 	img, err := http.Get(y.API_IMG + "/" + task.board + "/" + task.filename)
-	if err != nil {
+	if err != nil || img.StatusCode != 200 {
 		fmt.Println("Media req failed")
 		fmt.Println(err)
 		return Media{}, err
@@ -164,6 +164,9 @@ func (y *Yotsuba) fetchMedia(task Task, db *dbClient, lru *lru.Cache[string, any
 		shouldWrite = false
 	}
 	body, err := io.ReadAll(img.Body)
+	mimeType := http.DetectContentType(body)
+	defer img.Body.Close()
+
 	if err != nil {
 		fmt.Println("Failed to read request body")
 		fmt.Println(err)
@@ -175,8 +178,6 @@ func (y *Yotsuba) fetchMedia(task Task, db *dbClient, lru *lru.Cache[string, any
 		fmt.Println(err)
 		return Media{}, err
 	}
-	mimeType := http.DetectContentType(body)
-	defer img.Body.Close()
 	lru.Add(task.hash, nil)
 	return Media{Sha256: hash, Mime: mimeType, Md5: task.hash, File: task.filename, Board: task.board, IsThumbnail: isThumbnail}, nil
 }

@@ -143,11 +143,6 @@ func writeFile(bytez []byte, isThumbnail bool, fullsizeHash string, shouldWrite 
 		path = os.Getenv("MEDIA_PATH")
 	}
 
-	err := os.MkdirAll(path, os.ModePerm)
-	if err != nil {
-		fmt.Println("failed to mkdir")
-		return "", err
-	}
 	//hash byte array
 	sum := fmt.Sprintf("%x", sha256.Sum256(bytez))
 
@@ -155,11 +150,23 @@ func writeFile(bytez []byte, isThumbnail bool, fullsizeHash string, shouldWrite 
 		return sum, nil
 	}
 
-	//create file with hash as file name
-	newpath := filepath.Join(path, sum)
+	//create file with first 2 digits of hash as folder
+	newpath := filepath.Join(path, sum[0:2])
+	fmt.Println(newpath)
+
+	err := os.MkdirAll(newpath, os.ModePerm)
+	if err != nil {
+		fmt.Println("failed to mkdir")
+		return "", err
+	}
+
+	newpath = filepath.Join(newpath, sum)
+	fmt.Println(newpath)
+
 	_, errExist := os.Stat(newpath)
 	if errExist == nil {
 		//If exist, return hash and do not save file
+		fmt.Println("file exists " + newpath)
 		return sum, nil
 	}
 
