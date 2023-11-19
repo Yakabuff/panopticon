@@ -8,8 +8,9 @@ CREATE TABLE IF NOT EXISTS thread (
    com TEXT NOT NULL,
    replies BIGINT NOT NULL,
    images BIGINT NOT NULL,
-   board TEXT NOT NULL
+   board TEXT NOT NULL,
+   tid TEXT UNIQUE NOT NULL
 );
 
-CREATE INDEX thread_index_no ON thread (no);
+CREATE INDEX thread_index_tid ON thread (tid);
 CREATE INDEX thread_index_time ON thread (time);

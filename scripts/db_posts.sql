@@ -6,8 +6,9 @@ CREATE TABLE IF NOT EXISTS post (
    name TEXT NOT NULL,
    trip TEXT,
    com TEXT NOT NULL,
-   board TEXT NOT NULL
+   board TEXT NOT NULL,
+   tid TEXT UNIQUE NOT NULL
 );
 
 CREATE INDEX post_index_resto ON post (resto);
-CREATE INDEX post_index_no ON post (no);
+CREATE INDEX post_index_tid ON post (tid);

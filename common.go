@@ -72,6 +72,7 @@ type MediaTask struct {
 
 type Thread struct {
 	Board  string
+	Id     int
 	Thread any
 }
 
@@ -198,3 +199,5 @@ func stringInSlice(a string, list []string) bool {
 	}
 	return false
 }
+
+var ErrInvalidStatusCode = errors.New("invalid status code")

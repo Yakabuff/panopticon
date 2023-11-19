@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -120,12 +122,7 @@ func (y *Yotsuba) fetchThread(task Task, db *dbClient) (any, error) {
 	defer resp2.Body.Close()
 	if resp2.StatusCode != 200 {
 		fmt.Printf("Failed to fetch %d Status: %d Board: %s", task.id, resp2.StatusCode, task.board)
-		err := db.deleteThreadTask(ThreadTask{No: task.id, Board: task.board})
-		if err != nil {
-			return YotsubaThread{}, err
-		}
-		// Remove all posts from thread from hash store
-		return YotsubaThread{}, nil
+		return YotsubaThread{}, ErrInvalidStatusCode
 	}
 
 	fmt.Println(resp2.Status)
@@ -148,10 +145,15 @@ func (y *Yotsuba) fetchThread(task Task, db *dbClient) (any, error) {
 func (y *Yotsuba) fetchMedia(task Task, db *dbClient, lru *lru.Cache[string, any]) (Media, error) {
 	isThumbnail := y.isThumbnail(task.filename)
 	img, err := http.Get(y.API_IMG + "/" + task.board + "/" + task.filename)
-	if err != nil || img.StatusCode != 200 {
+	if err != nil {
 		fmt.Println("Media req failed")
 		fmt.Println(err)
 		return Media{}, err
+	}
+
+	if img.StatusCode != 200 {
+		fmt.Printf("Media req failed %d \n", img.StatusCode)
+		return Media{File: task.filename, Board: task.board}, ErrInvalidStatusCode
 	}
 
 	defer img.Body.Close()
@@ -217,13 +219,22 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, 
 	z := thread.(Thread)
 	board := z.Board
 	x := z.Thread.(YotsubaThread)
+
+	if z == (Thread{}) {
+		err := db.deleteThreadTask(ThreadTask{No: z.Id, Board: board})
+		if err != nil {
+			return err
+		}
+	}
+
+	sort.Slice(x.Posts, func(i, j int) bool { return x.Posts[i].No < x.Posts[j].No })
+	// Calculate internal tid hash(thread number, thread time, board)
+	tid := fmt.Sprintf("%x", sha256.Sum256([]byte(strconv.Itoa(x.Posts[0].No)+strconv.Itoa(x.Posts[0].Time)+board)))
+	fmt.Println("threadWorker tid " + tid)
 	for _, t := range x.Posts {
-
-		// Check if hash in posts
-
 		if t.Resto == 0 {
 			fmt.Println("inserting thread")
-			err := db.insertThread(board, t.No, t.Time, t.Name, t.Trip, t.Sub, t.Com, t.Replies, t.Images)
+			err := db.insertThread(board, t.No, t.Time, t.Name, t.Trip, t.Sub, t.Com, t.Replies, t.Images, tid)
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -245,8 +256,8 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, 
 			}
 		} else {
 			// Insert post
-			// fmt.Println("insert post")
-			err := db.insertPost(board, t.No, t.Resto, t.Time, t.Name, t.Trip, t.Com)
+			fmt.Println("insert post " + tid)
+			err := db.insertPost(board, t.No, t.Resto, t.Time, t.Name, t.Trip, t.Com, tid)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -368,6 +379,15 @@ func (y *Yotsuba) mediaWatcher(db *dbClient, hc chan Task) {
 // Delete image task
 // If thumbnail enabled, queue thumbnail
 func (y *Yotsuba) mediaWorker(media Media, db *dbClient) {
+
+	if media.Sha256 == "" && media.Mime == "" {
+		err := db.deleteMediaTask(MediaTask{File: media.File, Board: media.Board})
+		if err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+
 	if !media.IsThumbnail && stringInSlice(media.Board, y.ThumbnailBoards) ||
 		!media.IsThumbnail && stringInSlice(media.Board, y.FullImageBoards) {
 		//Queue thumbnail
@@ -387,7 +407,7 @@ func (y *Yotsuba) mediaWorker(media Media, db *dbClient) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	err = db.deleteMediaTask(media.File, media.Board)
+	err = db.deleteMediaTask(MediaTask{File: media.File, Board: media.Board})
 	if err != nil {
 		fmt.Println(err)
 	}

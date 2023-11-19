@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -27,17 +28,17 @@ func (a *Archiver) httpWorker() {
 		case THREAD:
 			fmt.Println("HTTP: received thread task" + strconv.Itoa(task.id))
 			t, err := a.imageboard.fetchThread(task, &a.db)
-			if err != nil {
+			if err != nil && !errors.Is(err, ErrInvalidStatusCode) {
 				fmt.Println(err)
 			} else {
 				fmt.Println("HTTP: sending thread content to theadWorkerChannel")
-				a.threadWorkerChannel <- Thread{task.board, t}
+				a.threadWorkerChannel <- Thread{Board: task.board, Thread: t, Id: task.id}
 				fmt.Println("HTTP: sent thread content to theadWorkerChannel")
 			}
 		case MEDIA:
 			fmt.Println("HTTP: received media task " + task.filename)
 			m, err := a.imageboard.fetchMedia(task, &a.db, a.lru)
-			if err != nil {
+			if err != nil && !errors.Is(err, ErrInvalidStatusCode) {
 				fmt.Println(err)
 			} else {
 				fmt.Println("HTTP: sending media content to mediaWorkerChannel")
