@@ -226,7 +226,7 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, 
 			return err
 		}
 	}
-
+	// Sort to get op thread ID
 	sort.Slice(x.Posts, func(i, j int) bool { return x.Posts[i].No < x.Posts[j].No })
 	// Calculate internal tid hash(thread number, thread time, board)
 	tid := fmt.Sprintf("%x", sha256.Sum256([]byte(strconv.Itoa(x.Posts[0].No)+strconv.Itoa(x.Posts[0].Time)+board)))
