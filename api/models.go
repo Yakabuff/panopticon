@@ -16,3 +16,14 @@ type Thread struct {
 	Board   string
 	Tid     string
 }
+
+type Post struct {
+	No    int64
+	Resto int64
+	Time  int64
+	Name  string
+	Trip  string
+	Com   string
+	Board string
+	Tid   string
+}

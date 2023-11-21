@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -51,17 +53,53 @@ func (a *App) fetchBoards(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) fetchBoardThreads(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("board threads")
 	name := r.URL.Query().Get("name")
 	after := r.URL.Query().Get("after")
 	before := r.URL.Query().Get("before")
 	sort := r.URL.Query().Get("sort")
-	fmt.Println(name)
-	fmt.Println(after)
-	fmt.Println(before)
-	fmt.Println(sort)
-	b, err := a.db.getThreads(0, 0, 0, "", "")
+	count := r.URL.Query().Get("count")
+	after2, err2 := strconv.ParseInt(after, 10, 64)
+
+	if name == "" {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err2 != nil && after != "" {
+		fmt.Println(err2)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	before2, err2 := strconv.ParseInt(before, 10, 64)
+	if err2 != nil && before != "" {
+		fmt.Println(err2)
+		render.Status(r, 500)
+		return
+	}
+	count2, err2 := strconv.Atoi(count)
+	if err2 != nil && count != "" {
+		fmt.Println(err2)
+		render.Status(r, 500)
+		return
+	}
+	if sort != "ASC" && sort != "" && sort != "DESC" {
+		render.Status(r, 500)
+		return
+	}
+	if sort == "" {
+		sort = "DESC"
+	}
+	if count2 > 200 {
+		count2 = 200
+	} else if count2 == 0 {
+		count2 = 50
+	}
+	if before2 == 0 {
+		before2 = time.Now().Unix()
+	}
+	b, err := a.db.getThreads(after2, before2, count2, name, sort)
 	if err != nil {
+		fmt.Println(err)
 		fmt.Println(err)
 	}
 	render.JSON(w, r, b)
