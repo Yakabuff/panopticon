@@ -256,8 +256,9 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, 
 			}
 		} else {
 			// Insert post
-			fmt.Println("insert post " + tid)
-			err := db.insertPost(board, t.No, t.Resto, t.Time, t.Name, t.Trip, t.Com, tid)
+			pid := fmt.Sprintf("%x", sha256.Sum256([]byte(strconv.Itoa(t.No)+strconv.Itoa(t.Time)+board)))
+			fmt.Println("insert post " + pid)
+			err := db.insertPost(board, t.No, t.Resto, t.Time, t.Name, t.Trip, t.Com, tid, pid)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -271,7 +272,11 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, 
 			if err != nil {
 				fmt.Println(err)
 			}
-			err = db.insertFileMapping(t.Filename, t.No, t.Tim, t.Ext, board, fileid)
+			var pid string
+			if t.Resto != 0 {
+				pid = fmt.Sprintf("%x", sha256.Sum256([]byte(strconv.Itoa(t.No)+strconv.Itoa(t.Time)+board)))
+			}
+			err = db.insertFileMapping(t.Filename, t.No, strconv.Itoa(t.Tim), t.Ext, board, fileid, tid, pid)
 			if err != nil {
 				fmt.Println(err)
 			}

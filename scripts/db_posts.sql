@@ -7,8 +7,11 @@ CREATE TABLE IF NOT EXISTS post (
    trip TEXT,
    com TEXT NOT NULL,
    board TEXT NOT NULL,
-   tid TEXT UNIQUE NOT NULL
+   tid TEXT NOT NULL,
+   pid TEXT NOT NULL,
+   UNIQUE(tid, pid)
 );
 
 CREATE INDEX post_index_resto ON post (resto);
 CREATE INDEX post_index_tid ON post (tid);
+CREATE INDEX post_index_pid ON post (pid);

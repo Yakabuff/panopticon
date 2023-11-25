@@ -40,6 +40,9 @@ func main() {
 		r.Get("/board", a.fetchBoardThreads)
 		// /g/thread?id=123
 		r.Get("/{board}/thread", a.fetchThread)
+		// /filemapping?id=123123&tid=123123
+		r.Get("/filemapping", a.fetchFileMapping)
+		r.Get("/file", a.fetchFile)
 	})
 	http.ListenAndServe(":3000", r)
 }
@@ -100,17 +103,96 @@ func (a *App) fetchBoardThreads(w http.ResponseWriter, r *http.Request) {
 	b, err := a.db.getThreads(after2, before2, count2, name, sort)
 	if err != nil {
 		fmt.Println(err)
-		fmt.Println(err)
 	}
 	render.JSON(w, r, b)
 }
 
 func (a *App) fetchThread(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("thread")
-	id := r.URL.Query().Get("id")
-	fmt.Println(id)
+	tid := r.URL.Query().Get("tid")
+	if tid == "" {
+		render.Status(r, 500)
+		return
+	}
+	t, err := a.db.getThreadByID(tid)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(t)
+	p, err := a.db.getPostsByID(tid)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(p)
+	thread := Thread{Op: t, Post: p}
+	render.JSON(w, r, thread)
 }
 
 type App struct {
 	db dbClient
+}
+
+func (a *App) fetchFileMapping(w http.ResponseWriter, r *http.Request) {
+	t := r.URL.Query().Get("type")
+	if t == "thread" {
+		tid := r.URL.Query().Get("tid")
+		fms, err := a.db.getFileMapping(tid, true)
+		if err != nil {
+			fmt.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		fmt.Println(fms)
+		render.JSON(w, r, fms)
+	} else if t == "post" {
+		pid := r.URL.Query().Get("pid")
+		fms, err := a.db.getFileMapping(pid, false)
+		if err != nil {
+			render.Status(r, 500)
+			return
+		}
+		render.JSON(w, r, fms)
+	} else {
+		render.Status(r, 500)
+		return
+	}
+}
+
+func (a *App) fetchFile(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("key")
+	_key, err := strconv.Atoi(key)
+	if key != "" && err != nil {
+		render.Status(r, 500)
+		return
+	}
+	if key == "" {
+		_key = -1
+	}
+	sha256 := r.URL.Query().Get("sha256")
+	md5 := r.URL.Query().Get("md5")
+	_w := r.URL.Query().Get("w")
+	__w, err := strconv.Atoi(_w)
+	if _w != "" && err != nil {
+		render.Status(r, 500)
+		return
+	}
+	h := r.URL.Query().Get("h")
+	_h, err := strconv.Atoi(h)
+	if h != "" && err != nil {
+		render.Status(r, 500)
+		return
+	}
+	fsize := r.URL.Query().Get("fsize")
+	_fsize, err := strconv.Atoi(fsize)
+	if fsize != "" && err != nil {
+		render.Status(r, 500)
+		return
+	}
+	mime := r.URL.Query().Get("mime")
+	file, err := a.db.getFileMeta(_key, sha256, md5, __w, _h, _fsize, mime)
+	if err != nil {
+		fmt.Println(err)
+		render.Status(r, 500)
+		return
+	}
+	render.JSON(w, r, file)
 }

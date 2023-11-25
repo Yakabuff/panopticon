@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 type dbClient struct {
@@ -32,54 +33,53 @@ func (d *dbClient) getBoards() ([]Board, error) {
 	return boards, nil
 }
 
-func (d *dbClient) getThreads(after int64, before int64, count int, board string, sort string) ([]Thread, error) {
-	var threads []Thread
+func (d *dbClient) getThreads(after int64, before int64, count int, board string, sort string) ([]Op, error) {
+	var ops []Op
 	stmt := fmt.Sprintf("SELECT no, time, name, trip, sub, replies, images, board, tid FROM thread WHERE board = $1 and time < $2 and time > $3 ORDER BY time %s LIMIT $4", sort)
 	rows, err := d.conn.Query(stmt, board, before, after, count)
 	if err != nil {
 		fmt.Println(err)
-		return threads, nil
+		return ops, nil
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var thread Thread
-		if err := rows.Scan(&thread.No, &thread.Time, &thread.Name, &thread.Trip, &thread.Sub,
-			&thread.Replies, &thread.Images, &thread.Board, &thread.Tid); err != nil {
-			return threads, err
+		var op Op
+		if err := rows.Scan(&op.No, &op.Time, &op.Name, &op.Trip, &op.Sub,
+			&op.Replies, &op.Images, &op.Board, &op.Tid); err != nil {
+			return ops, err
 		}
-		threads = append(threads, thread)
+		ops = append(ops, op)
 	}
 	if err = rows.Err(); err != nil {
-		return threads, err
+		return ops, err
 	}
-	return threads, nil
+	return ops, nil
 }
 
-func (d *dbClient) getThreadByID(tid int64, board string) (Thread, error) {
-	var thread Thread
-	stmt := "SELECT no, time, name, trip, sub, replies, images, board, tid FROM thread WHERE board = $1 and tid = $2"
+func (d *dbClient) getThreadByID(tid string) (Op, error) {
+	var op Op
+	stmt := "SELECT no, time, name, trip, sub, replies, images, board, tid FROM thread WHERE tid = $1 LIMIT 1"
 	rows, err := d.conn.Query(stmt, tid)
 	if err != nil {
 		fmt.Println(err)
-		return thread, nil
+		return op, nil
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var thread Thread
-		if err := rows.Scan(&thread.No, &thread.Time, &thread.Name, &thread.Trip, &thread.Sub,
-			&thread.Replies, &thread.Images, &thread.Board, &thread.Tid); err != nil {
-			return thread, err
+		if err := rows.Scan(&op.No, &op.Time, &op.Name, &op.Trip, &op.Sub,
+			&op.Replies, &op.Images, &op.Board, &op.Tid); err != nil {
+			return op, err
 		}
 	}
 	if err = rows.Err(); err != nil {
-		return thread, err
+		return op, err
 	}
-	return thread, nil
+	return op, nil
 }
 
-func (d *dbClient) getPostsByID(tid int64, board string) ([]Post, error) {
+func (d *dbClient) getPostsByID(tid string) ([]Post, error) {
 	var posts []Post
-	stmt := "SELECT no, resto, time, name, trip, com, board FROM thread WHERE post = $1 and tid = $2"
+	stmt := "SELECT no, resto, time, name, trip, com, board FROM post WHERE tid = $1"
 	rows, err := d.conn.Query(stmt, tid)
 	if err != nil {
 		fmt.Println(err)
@@ -98,4 +98,82 @@ func (d *dbClient) getPostsByID(tid int64, board string) ([]Post, error) {
 		return posts, err
 	}
 	return posts, nil
+}
+
+func (d *dbClient) getFileMapping(id string, isThread bool) ([]FileMapping, error) {
+	var fms []FileMapping
+	var stmt string
+	if isThread {
+		stmt = "SELECT filename, ext, identifier, no, board, fileid from file_mapping where tid = $1"
+	} else {
+		stmt = "SELECT filename, ext, identifier, no, board, fileid from file_mapping where pid = $1"
+	}
+	rows, err := d.conn.Query(stmt, id)
+	if err != nil {
+		fmt.Println(err)
+		return fms, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var fm FileMapping
+		if err := rows.Scan(&fm.Filename, &fm.Ext, &fm.Identifier, &fm.No, &fm.Board, &fm.FileID); err != nil {
+			return fms, err
+		}
+		fms = append(fms, fm)
+	}
+	if err = rows.Err(); err != nil {
+		return fms, err
+	}
+	return fms, nil
+}
+
+func (d *dbClient) getFileMeta(key int, sha256 string, md5 string, w int, h int, fsize int, mime string) (File, error) {
+	var file File
+	stmt := "SELECT sha256, md5, w, h, fsize, mime from file where "
+	result := []any{}
+	if key != -1 {
+		result = append(result, key)
+		stmt += fmt.Sprintf("id = $%d and ", len(result))
+	}
+	if sha256 != "" {
+		result = append(result, sha256)
+		stmt += fmt.Sprintf("sha256 = $%d and ", len(result))
+	}
+	if md5 != "" {
+		result = append(result, md5)
+		stmt += fmt.Sprintf("md5 = $%d and ", len(result))
+	}
+	if w != 0 {
+		result = append(result, w)
+		stmt += fmt.Sprintf("w = $%d and ", len(result))
+	}
+	if h != 0 {
+		result = append(result, h)
+		stmt += fmt.Sprintf("h = $%d and ", len(result))
+	}
+	if fsize != 0 {
+		result = append(result, fsize)
+		stmt += fmt.Sprintf("fsize = $%d and ", len(result))
+	}
+	if mime != "" {
+		result = append(result, mime)
+		stmt += fmt.Sprintf("mime = $%d and ", len(result))
+	}
+	stmt = strings.TrimSuffix(stmt, "and ")
+
+	rows, err := d.conn.Query(stmt, result...)
+	if err != nil {
+		fmt.Println(err)
+		return file, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := rows.Scan(&file.Sha256, &file.Md5, &file.W, &file.H, &file.Fsize, &file.Mime); err != nil {
+			return file, err
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return file, err
+	}
+	return file, nil
 }

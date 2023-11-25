@@ -5,7 +5,7 @@ type Board struct {
 	Unlisted bool
 }
 
-type Thread struct {
+type Op struct {
 	No      int64
 	Time    int64
 	Name    string
@@ -26,4 +26,29 @@ type Post struct {
 	Com   string
 	Board string
 	Tid   string
+}
+
+type Thread struct {
+	Op   Op
+	Post []Post
+}
+
+type FileMapping struct {
+	Filename   string
+	Ext        string
+	Identifier string
+	No         int64
+	Board      string
+	FileID     int64
+	Tid        string
+	Pid        string
+}
+
+type File struct {
+	Sha256 string
+	Md5    string
+	W      int
+	H      int
+	Fsize  int
+	Mime   string
 }

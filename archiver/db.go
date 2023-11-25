@@ -120,8 +120,8 @@ func (d *dbClient) deleteMediaTask(mt MediaTask) error {
 	return nil
 }
 
-func (d *dbClient) insertPost(board string, no int, resto int, time int, name string, trip string, com string, tid string) error {
-	stmt := "INSERT INTO post(no, resto, time, name, trip, com, board, tid) values($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING;"
+func (d *dbClient) insertPost(board string, no int, resto int, time int, name string, trip string, com string, tid string, pid string) error {
+	stmt := "INSERT INTO post(no, resto, time, name, trip, com, board, tid, pid) values($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING;"
 	post := strconv.Itoa(no)
 	boardThread := board + strconv.Itoa(resto)
 	d.mu.Lock()
@@ -130,7 +130,7 @@ func (d *dbClient) insertPost(board string, no int, resto int, time int, name st
 	// Check if key exists
 	if !ok {
 		fmt.Println("inserting post from " + tid)
-		_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board, tid)
+		_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board, tid, pid)
 		if err != nil {
 			fmt.Println(err)
 			return err
@@ -146,7 +146,7 @@ func (d *dbClient) insertPost(board string, no int, resto int, time int, name st
 			fmt.Printf("Post %d board %s in store: skipping", no, board)
 		} else {
 			fmt.Println("inserting post from " + tid)
-			_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board, tid)
+			_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board, tid, pid)
 			if err != nil {
 				fmt.Println(err)
 				return err
@@ -184,9 +184,9 @@ func (d *dbClient) insertMedia(sha256 string, md5 string, w int, h int, fsize in
 	return id, nil
 }
 
-func (d *dbClient) insertFileMapping(filename string, no int, tim int, ext string, board string, fileid int64) error {
-	stmt := "INSERT INTO file_mapping(filename, ext, tim, no, board, fileid) values($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING;"
-	_, err := d.conn.Exec(stmt, filename, ext, tim, no, board, fileid)
+func (d *dbClient) insertFileMapping(filename string, no int, identifier string, ext string, board string, fileid int64, tid string, pid string) error {
+	stmt := "INSERT INTO file_mapping(filename, ext, identifier, no, board, fileid, tid, pid) values($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING;"
+	_, err := d.conn.Exec(stmt, filename, ext, identifier, no, board, fileid, tid, pid)
 	if err != nil {
 		return err
 	}
