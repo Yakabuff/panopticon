@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS thread (
    replies BIGINT NOT NULL,
    images BIGINT NOT NULL,
    board TEXT NOT NULL,
-   tid TEXT UNIQUE NOT NULL
+   tid TEXT UNIQUE NOT NULL,
+   has_image boolean NOT NULL,
 );
 
 CREATE INDEX thread_index_tid ON thread (tid);

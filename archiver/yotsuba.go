@@ -234,7 +234,13 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, 
 	for _, t := range x.Posts {
 		if t.Resto == 0 {
 			fmt.Println("inserting thread")
-			err := db.insertThread(board, t.No, t.Time, t.Name, t.Trip, t.Sub, t.Com, t.Replies, t.Images, tid)
+			var hasImage bool
+			if t.Tim == 0 {
+				hasImage = false
+			} else {
+				hasImage = true
+			}
+			err := db.insertThread(board, t.No, t.Time, t.Name, t.Trip, t.Sub, t.Com, t.Replies, t.Images, tid, hasImage)
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -256,9 +262,15 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, 
 			}
 		} else {
 			// Insert post
+			var hasImage bool
+			if t.Tim == 0 {
+				hasImage = false
+			} else {
+				hasImage = true
+			}
 			pid := fmt.Sprintf("%x", sha256.Sum256([]byte(strconv.Itoa(t.No)+strconv.Itoa(t.Time)+board)))
 			fmt.Println("insert post " + pid)
-			err := db.insertPost(board, t.No, t.Resto, t.Time, t.Name, t.Trip, t.Com, tid, pid)
+			err := db.insertPost(board, t.No, t.Resto, t.Time, t.Name, t.Trip, t.Com, tid, pid, hasImage)
 			if err != nil {
 				fmt.Println(err)
 			}

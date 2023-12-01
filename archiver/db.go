@@ -120,8 +120,8 @@ func (d *dbClient) deleteMediaTask(mt MediaTask) error {
 	return nil
 }
 
-func (d *dbClient) insertPost(board string, no int, resto int, time int, name string, trip string, com string, tid string, pid string) error {
-	stmt := "INSERT INTO post(no, resto, time, name, trip, com, board, tid, pid) values($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING;"
+func (d *dbClient) insertPost(board string, no int, resto int, time int, name string, trip string, com string, tid string, pid string, hasImage bool) error {
+	stmt := "INSERT INTO post(no, resto, time, name, trip, com, board, tid, pid, has_image) values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING;"
 	post := strconv.Itoa(no)
 	boardThread := board + strconv.Itoa(resto)
 	d.mu.Lock()
@@ -130,7 +130,7 @@ func (d *dbClient) insertPost(board string, no int, resto int, time int, name st
 	// Check if key exists
 	if !ok {
 		fmt.Println("inserting post from " + tid)
-		_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board, tid, pid)
+		_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board, tid, pid, hasImage)
 		if err != nil {
 			fmt.Println(err)
 			return err
@@ -146,7 +146,7 @@ func (d *dbClient) insertPost(board string, no int, resto int, time int, name st
 			fmt.Printf("Post %d board %s in store: skipping", no, board)
 		} else {
 			fmt.Println("inserting post from " + tid)
-			_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board, tid, pid)
+			_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board, tid, pid, hasImage)
 			if err != nil {
 				fmt.Println(err)
 				return err
@@ -157,14 +157,14 @@ func (d *dbClient) insertPost(board string, no int, resto int, time int, name st
 	return nil
 }
 
-func (d *dbClient) insertThread(board string, no int, time int, name string, trip string, sub string, com string, replies int, images int, tid string) error {
-	stmt := "INSERT INTO thread(no, time, name, trip, sub, com, replies, images, board, tid) values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING;"
+func (d *dbClient) insertThread(board string, no int, time int, name string, trip string, sub string, com string, replies int, images int, tid string, hasImage bool) error {
+	stmt := "INSERT INTO thread(no, time, name, trip, sub, com, replies, images, board, tid, has_image) values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT DO NOTHING;"
 	boardThread := board + strconv.Itoa(no)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	_, ok := d.store[boardThread]
 	if !ok {
-		_, err := d.conn.Exec(stmt, no, time, name, trip, sub, com, replies, images, board, tid)
+		_, err := d.conn.Exec(stmt, no, time, name, trip, sub, com, replies, images, board, tid, hasImage)
 		if err != nil {
 			return err
 		}

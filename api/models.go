@@ -26,6 +26,7 @@ type Post struct {
 	Com   string
 	Board string
 	Tid   string
+	Pid   string
 }
 
 type Thread struct {

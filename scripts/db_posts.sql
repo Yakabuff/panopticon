@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS post (
    board TEXT NOT NULL,
    tid TEXT NOT NULL,
    pid TEXT NOT NULL,
+   has_image boolean NOT NULL,
    UNIQUE(tid, pid)
 );
 
