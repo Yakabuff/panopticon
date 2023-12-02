@@ -6,27 +6,30 @@ type Board struct {
 }
 
 type Op struct {
-	No      int64
-	Time    int64
-	Name    string
-	Trip    string
-	Sub     string
-	Replies int
-	Images  int
-	Board   string
-	Tid     string
+	No       int64
+	Time     int64
+	Name     string
+	Trip     string
+	Sub      string
+	Com      string
+	Replies  int
+	Images   int
+	Board    string
+	Tid      string
+	HasImage bool
 }
 
 type Post struct {
-	No    int64
-	Resto int64
-	Time  int64
-	Name  string
-	Trip  string
-	Com   string
-	Board string
-	Tid   string
-	Pid   string
+	No       int64
+	Resto    int64
+	Time     int64
+	Name     string
+	Trip     string
+	Com      string
+	Board    string
+	Tid      string
+	Pid      string
+	HasImage bool
 }
 
 type Thread struct {

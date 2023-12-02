@@ -33,17 +33,43 @@ func (d *dbClient) getBoards() ([]Board, error) {
 	return boards, nil
 }
 
-func (d *dbClient) getThreads(after int64, before int64, count int, board string, sort string, trip string, hasImage string) ([]Op, error) {
+func (d *dbClient) getOPs(after int64, before int64, count int, board string, sort string, trip string, hasImage string, name string) ([]Op, error) {
 	var ops []Op
-	stmt := "SELECT no, time, name, trip, sub, replies, images, board, tid FROM thread WHERE board = $1 and time < $2 and time > $3"
+	result := []any{}
+	stmt := "SELECT no, time, name, trip, sub, com, replies, images, board, tid, pid, has_image FROM thread WHERE "
+	if board != "" {
+		result = append(result, board)
+		stmt += fmt.Sprintf("board = $%d and ", len(result))
+	}
+	if name != "" {
+		result = append(result, name)
+		stmt += fmt.Sprintf("name = $%d and ", len(result))
+	}
+	if trip != "" {
+		result = append(result, trip)
+		stmt += fmt.Sprintf("trip = $%d and ", len(result))
+	}
+	if after != 0 {
+		result = append(result, after)
+		stmt += fmt.Sprintf("time > $%d and ", len(result))
+	}
+	if before != 0 {
+		result = append(result, before)
+		stmt += fmt.Sprintf("time < $%d and ", len(result))
+	}
+	stmt = strings.TrimSuffix(stmt, "and ")
 	if hasImage == "true" {
 		stmt = stmt + " and has_image = true"
 	} else if hasImage == "false" {
 		stmt = stmt + " and has_image = false"
 	}
-	stmt2 := fmt.Sprintf(" ORDER BY time %s LIMIT $4", sort)
+	stmt2 := fmt.Sprintf(" ORDER BY time %s", sort)
 	stmt = stmt + stmt2
-	rows, err := d.conn.Query(stmt, board, before, after, count)
+	if count != 0 {
+		result = append(result, count)
+		stmt += fmt.Sprintf(" LIMIT $%d", len(result))
+	}
+	rows, err := d.conn.Query(stmt, result...)
 	if err != nil {
 		fmt.Println(err)
 		return ops, nil
@@ -51,7 +77,7 @@ func (d *dbClient) getThreads(after int64, before int64, count int, board string
 	defer rows.Close()
 	for rows.Next() {
 		var op Op
-		if err := rows.Scan(&op.No, &op.Time, &op.Name, &op.Trip, &op.Sub,
+		if err := rows.Scan(&op.No, &op.Time, &op.Name, &op.Trip, &op.Sub, &op.Com,
 			&op.Replies, &op.Images, &op.Board, &op.Tid); err != nil {
 			return ops, err
 		}
@@ -62,11 +88,10 @@ func (d *dbClient) getThreads(after int64, before int64, count int, board string
 	}
 	return ops, nil
 }
-
 func (d *dbClient) getPosts(after int64, before int64, count int, board string, sort string, trip string, hasImage string, name string) ([]Post, error) {
 	var posts []Post
 	result := []any{}
-	stmt := "SELECT no, resto, time, name, trip, com, board, tid, pid FROM pid WHERE "
+	stmt := "SELECT no, resto, time, name, trip, com, board, tid, pid, has_image FROM post WHERE "
 	if board != "" {
 		result = append(result, board)
 		stmt += fmt.Sprintf("board = $%d and ", len(result))
@@ -108,7 +133,7 @@ func (d *dbClient) getPosts(after int64, before int64, count int, board string, 
 	for rows.Next() {
 		var post Post
 		if err := rows.Scan(&post.No, &post.Resto, &post.Time, &post.Name, &post.Trip, &post.Com,
-			&post.Board, &post.Tid, &post.Pid); err != nil {
+			&post.Board, &post.Tid, &post.Pid, &post.HasImage); err != nil {
 			return posts, err
 		}
 		posts = append(posts, post)

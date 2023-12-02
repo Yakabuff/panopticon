@@ -38,8 +38,14 @@ func (a *App) fetchOPs(w http.ResponseWriter, r *http.Request) {
 	after := r.URL.Query().Get("after")
 	before := r.URL.Query().Get("before")
 	sort := r.URL.Query().Get("sort")
+	sortBy := r.URL.Query().Get("sortby")
 	count := r.URL.Query().Get("count")
 	trip := r.URL.Query().Get("trip")
+	name := r.URL.Query().Get("name")
+	// repliesGt := r.URL.Query().Get("repliesgt")
+	// repliesLt := r.URL.Query().Get("replieslt")
+	// imagesGt := r.URL.Query().Get("imagesgt")
+	// imagesLt := r.URL.Query().Get("imageslt")
 	hasImage := r.URL.Query().Get("has_image")
 	after2, err2 := strconv.ParseInt(after, 10, 64)
 
@@ -82,21 +88,25 @@ func (a *App) fetchOPs(w http.ResponseWriter, r *http.Request) {
 	before2, err2 := strconv.ParseInt(before, 10, 64)
 	if err2 != nil && before != "" {
 		fmt.Println(err2)
-		render.Status(r, 500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	count2, err2 := strconv.Atoi(count)
 	if err2 != nil && count != "" {
 		fmt.Println(err2)
-		render.Status(r, 500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	if sort != "ASC" && sort != "" && sort != "DESC" {
-		render.Status(r, 500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	if sort == "" {
 		sort = "DESC"
+	}
+	if sortBy != "" && sortBy != "replies" && sortBy != "images" {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 	if count2 > 200 {
 		count2 = 200
@@ -106,7 +116,7 @@ func (a *App) fetchOPs(w http.ResponseWriter, r *http.Request) {
 	if before2 == 0 {
 		before2 = time.Now().Unix()
 	}
-	b, err := a.db.getThreads(after2, before2, count2, boardName, sort, trip, hasImage)
+	b, err := a.db.getOPs(after2, before2, count2, boardName, sort, trip, hasImage, name)
 	if err != nil {
 		fmt.Println(err)
 	}
