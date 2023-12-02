@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"embed"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,10 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 )
+
+//go:embed static/boards.html
+//go:embed static/catalog.html
+var templates embed.FS
 
 func main() {
 
@@ -27,8 +32,10 @@ func main() {
 	a := App{db: dbClient{db}}
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("welcome"))
+
+	r.Route("/", func(r chi.Router) {
+		r.Get("/", a.serveBoards)
+		r.Get("/{board}", a.serveCatalog)
 	})
 
 	r.Route("/api", func(r chi.Router) {

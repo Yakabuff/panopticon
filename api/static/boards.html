@@ -1,0 +1,24 @@
+<html>
+    <head>
+        <style>
+            table, th, td {
+            border: 1px solid;
+            }
+        </style>
+    </head>
+    <body>
+    <h1>Boards</h1>
+    <!----Links to each guild-->
+    <div id = "guilds">
+
+        {{range .Boards}}
+        <table>
+            <tr>
+                <td><a href ="/{{ .Board }}">{{ .Board }}</a></td>
+            </tr>
+        </table>
+        {{ end }}
+
+    </div>
+    </body>
+</html>

@@ -1,0 +1,34 @@
+
+<html>
+    <head>
+        <style>
+            table, th, td {
+            border: 1px solid;
+            }
+        </style>
+    </head>
+    <body>
+    <h1>{{ (index .Ops 0).Board }}</h1>
+    <!----Links to each guild-->
+    <div id = "guilds">
+
+         {{range .Ops}}
+         <table>
+            <tr>
+               <td><a href ="/">{{ .No }}</a></td>
+               <td>Time posted: {{ .Time }}</td>
+            </tr>
+            <tr>
+               <td>{{ .Replies }} replies</td>
+            </tr>
+            <tr>
+               <td>{{ .Sub }}</td>
+               <td>{{ .Com }}</td>
+            </tr>
+         </table>
+         </br>
+         {{ end }}
+
+    </div>
+    </body>
+</html>

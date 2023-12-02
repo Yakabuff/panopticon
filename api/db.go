@@ -36,7 +36,7 @@ func (d *dbClient) getBoards() ([]Board, error) {
 func (d *dbClient) getOPs(after int64, before int64, count int, board string, sort string, trip string, hasImage string, name string) ([]Op, error) {
 	var ops []Op
 	result := []any{}
-	stmt := "SELECT no, time, name, trip, sub, com, replies, images, board, tid, pid, has_image FROM thread WHERE "
+	stmt := "SELECT no, time, name, trip, sub, com, replies, images, board, tid, has_image FROM thread WHERE "
 	if board != "" {
 		result = append(result, board)
 		stmt += fmt.Sprintf("board = $%d and ", len(result))
@@ -78,7 +78,7 @@ func (d *dbClient) getOPs(after int64, before int64, count int, board string, so
 	for rows.Next() {
 		var op Op
 		if err := rows.Scan(&op.No, &op.Time, &op.Name, &op.Trip, &op.Sub, &op.Com,
-			&op.Replies, &op.Images, &op.Board, &op.Tid); err != nil {
+			&op.Replies, &op.Images, &op.Board, &op.Tid, &op.HasImage); err != nil {
 			return ops, err
 		}
 		ops = append(ops, op)

@@ -4,6 +4,9 @@ type Board struct {
 	Board    string
 	Unlisted bool
 }
+type Boards struct {
+	Boards []Board
+}
 
 type Op struct {
 	No       int64
@@ -17,6 +20,9 @@ type Op struct {
 	Board    string
 	Tid      string
 	HasImage bool
+}
+type Ops struct {
+	Ops []Op
 }
 
 type Post struct {

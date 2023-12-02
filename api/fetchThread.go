@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
+	"text/template"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
 )
 
@@ -121,4 +124,21 @@ func (a *App) fetchOPs(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 	}
 	render.JSON(w, r, b)
+}
+
+func (a *App) serveCatalog(w http.ResponseWriter, r *http.Request) {
+	before := time.Now().Unix()
+	board := chi.URLParam(r, "board")
+	ops, err := a.db.getOPs(0, before, 50, board, "DESC", "", "", "")
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	tmpl, err := template.ParseFS(templates, "static/catalog.html")
+	if err != nil {
+		log.Println(err)
+	}
+	b := Ops{Ops: ops}
+	tmpl.Execute(w, b)
 }
