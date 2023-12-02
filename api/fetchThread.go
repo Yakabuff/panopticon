@@ -142,3 +142,25 @@ func (a *App) serveCatalog(w http.ResponseWriter, r *http.Request) {
 	b := Ops{Ops: ops}
 	tmpl.Execute(w, b)
 }
+
+func (a *App) serveThread(w http.ResponseWriter, r *http.Request) {
+	tid := chi.URLParam(r, "tid")
+	t, err := a.db.getThreadByID(tid)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	p, err := a.db.getPostsByID(tid, "")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	thread := Thread{Op: t, Post: p}
+	fmt.Println(thread)
+	tmpl, err := template.ParseFS(templates, "static/thread.html")
+	if err != nil {
+		log.Println(err)
+	}
+	tmpl.Execute(w, thread)
+}

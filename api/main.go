@@ -16,6 +16,7 @@ import (
 
 //go:embed static/boards.html
 //go:embed static/catalog.html
+//go:embed static/thread.html
 var templates embed.FS
 
 func main() {
@@ -36,6 +37,7 @@ func main() {
 	r.Route("/", func(r chi.Router) {
 		r.Get("/", a.serveBoards)
 		r.Get("/{board}", a.serveCatalog)
+		r.Get("/{board}/{tid}", a.serveThread)
 	})
 
 	r.Route("/api", func(r chi.Router) {
