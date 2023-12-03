@@ -18,19 +18,20 @@
          {{range .Ops}}
          <table>
             <tr>
-               <td><a href ="/{{ .Board }}/{{ .Tid }}">{{ .No }}</a></td>
+               <td colspan="2"><a href ="/{{ .Board }}/{{ .Tid }}">{{ .No }}</a></td>
             </tr>
             <tr>
-               <td>Time posted: {{ .Time }}</td>
+               <td colspan="2">Time posted: {{ .Time }}</td>
             </tr>
             <tr>
-               <td>{{ .Replies }} replies</td>
+               <td colspan="2">{{ .Replies }} replies</td>
             </tr>
             <tr>
                <td>{{ .Sub }}</td>
+               <td> <img src="/file?tid={{ .Tid }}&type=thumb"></img></td>
             </tr>
             <tr>
-               <td>{{ .Com }}</td>
+               <td colspan="2">{{ .Com }}</td>
             </tr>
          </table>
          </br>

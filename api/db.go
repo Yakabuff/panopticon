@@ -222,15 +222,18 @@ func (d *dbClient) getPostByResto(resto int64) ([]Post, error) {
 	}
 	return posts, nil
 }
-func (d *dbClient) getFileMapping(id string, isThread bool) ([]FileMapping, error) {
+func (d *dbClient) getFileMapping(tid string, pid string, isThread bool) ([]FileMapping, error) {
 	var fms []FileMapping
 	var stmt string
+	var rows *sql.Rows
+	var err error
 	if isThread {
 		stmt = "SELECT filename, ext, identifier, no, board, fileid from file_mapping where tid = $1"
+		rows, err = d.conn.Query(stmt, tid)
 	} else {
-		stmt = "SELECT filename, ext, identifier, no, board, fileid from file_mapping where pid = $1"
+		stmt = "SELECT filename, ext, identifier, no, board, fileid from file_mapping where pid = $1 and tid = $2"
+		rows, err = d.conn.Query(stmt, pid, tid)
 	}
-	rows, err := d.conn.Query(stmt, id)
 	if err != nil {
 		fmt.Println(err)
 		return fms, err
@@ -249,7 +252,7 @@ func (d *dbClient) getFileMapping(id string, isThread bool) ([]FileMapping, erro
 	return fms, nil
 }
 
-func (d *dbClient) getFileMeta(key int, sha256 string, md5 string, w int, h int, fsize int, mime string) (File, error) {
+func (d *dbClient) getFileMeta(key int64, sha256 string, md5 string, w int, h int, fsize int, mime string) (File, error) {
 	var file File
 	stmt := "SELECT sha256, md5, w, h, fsize, mime from file where "
 	result := []any{}

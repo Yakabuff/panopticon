@@ -38,8 +38,8 @@ func main() {
 		r.Get("/", a.serveBoards)
 		r.Get("/{board}", a.serveCatalog)
 		r.Get("/{board}/{tid}", a.serveThread)
+		r.Get("/file", a.serveFile)
 		// serve files
-		// paginate catalog
 	})
 
 	r.Route("/api", func(r chi.Router) {
