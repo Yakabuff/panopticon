@@ -22,7 +22,10 @@ type Op struct {
 	HasImage bool
 }
 type Ops struct {
-	Ops []Op
+	Ops     []Op
+	Before  int64
+	After   int64
+	HasPrev bool
 }
 
 type Post struct {

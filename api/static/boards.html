@@ -11,13 +11,9 @@
     <!----Links to each guild-->
     <div id = "guilds">
 
-        {{range .Boards}}
-        <table>
-            <tr>
-                <td><a href ="/{{ .Board }}">{{ .Board }}</a></td>
-            </tr>
-        </table>
-        {{ end }}
+         {{range .Boards}}
+            <h1><a href ="/{{ .Board }}">{{ .Board }}</a></h1>
+         {{ end }}
 
     </div>
     </body>

@@ -127,9 +127,58 @@ func (a *App) fetchOPs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) serveCatalog(w http.ResponseWriter, r *http.Request) {
-	before := time.Now().Unix()
+	before := r.URL.Query().Get("before")
+	after := r.URL.Query().Get("after")
 	board := chi.URLParam(r, "board")
-	ops, err := a.db.getOPs(0, before, 50, board, "DESC", "", "", "")
+	var _before int64
+	var _after int64
+	var err error
+	var hasPrev bool
+	var sort string
+	if before == "" && after != "" {
+		// prev
+		_before = 0
+		_after, err = strconv.ParseInt(after, 10, 64)
+		if err != nil {
+			fmt.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		sort = "ASC"
+	} else if after == "" && before != "" {
+		// next
+		_before, err = strconv.ParseInt(before, 10, 64)
+		hasPrev = true
+		sort = "DESC"
+		if err != nil {
+			fmt.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	} else if after == "" && before == "" {
+		// Default load catalog. no prev or next
+		_before = time.Now().Unix()
+		_after = 0
+		hasPrev = false
+		sort = "DESC"
+	} else {
+		// fetch range of posts?
+		_before, err = strconv.ParseInt(before, 10, 64)
+		hasPrev = true
+		sort = "DESC"
+		if err != nil {
+			fmt.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_after, err = strconv.ParseInt(after, 10, 64)
+		if err != nil {
+			fmt.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
+	ops, err := a.db.getOPs(_after, _before, 50, board, sort, "", "", "")
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -139,8 +188,34 @@ func (a *App) serveCatalog(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 	}
-	b := Ops{Ops: ops}
-	tmpl.Execute(w, b)
+	// prev -> after first time sort asc limit 50 -> reverse list
+	// /po?after=1231231
+	// next -> before last time
+	// /po?before=123123
+
+	// Set new after and before for prev/next buttons
+	if len(ops) > 0 {
+		if after != "" && before == "" {
+			// Coming from prev, reverse slice
+			for i, j := 0, len(ops)-1; i < j; i, j = i+1, j-1 {
+				ops[i], ops[j] = ops[j], ops[i]
+			}
+			_after = ops[0].Time
+			_before = ops[len(ops)-1].Time
+		} else if after == "" && before != "" {
+			// Coming from next
+			_before = ops[len(ops)-1].Time
+			_after = ops[0].Time
+		} else if after == "" && before == "" {
+			// Coming from /
+			_before = ops[len(ops)-1].Time
+		}
+	}
+	b := Ops{Ops: ops, HasPrev: hasPrev, After: _after, Before: _before}
+	err = tmpl.Execute(w, b)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 func (a *App) serveThread(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +232,6 @@ func (a *App) serveThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	thread := Thread{Op: t, Post: p}
-	fmt.Println(thread)
 	tmpl, err := template.ParseFS(templates, "static/thread.html")
 	if err != nil {
 		log.Println(err)

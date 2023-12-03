@@ -145,7 +145,7 @@ func (d *dbClient) getPosts(after int64, before int64, count int, board string, 
 }
 func (d *dbClient) getThreadByID(tid string) (Op, error) {
 	var op Op
-	stmt := "SELECT no, time, name, trip, sub, replies, images, board, tid FROM thread WHERE tid = $1 LIMIT 1"
+	stmt := "SELECT no, time, name, trip, sub, com, replies, images, board, tid FROM thread WHERE tid = $1 LIMIT 1"
 	rows, err := d.conn.Query(stmt, tid)
 	if err != nil {
 		fmt.Println(err)
@@ -153,7 +153,7 @@ func (d *dbClient) getThreadByID(tid string) (Op, error) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		if err := rows.Scan(&op.No, &op.Time, &op.Name, &op.Trip, &op.Sub,
+		if err := rows.Scan(&op.No, &op.Time, &op.Name, &op.Trip, &op.Sub, &op.Com,
 			&op.Replies, &op.Images, &op.Board, &op.Tid); err != nil {
 			return op, err
 		}

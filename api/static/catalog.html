@@ -1,21 +1,26 @@
 
 <html>
-    <head>
-        <style>
+   <head>
+      <style>
             table, th, td {
             border: 1px solid;
-            }
-        </style>
-    </head>
-    <body>
-    <h1>{{ (index .Ops 0).Board }}</h1>
-    <!----Links to each guild-->
-    <div id = "guilds">
-
+         }
+      </style>
+   </head>
+   <body>
+      <h1>{{ (index .Ops 0).Board }}</h1>
+      <!----Links to each guild-->
+      <div id = "guilds">
+         {{ if .HasPrev}}
+         <a href = "/{{ (index .Ops 0).Board }}?after={{ .After }}">Prev</a>
+         {{ end }}
+         <a href = "/{{ (index .Ops 0).Board }}?before={{ .Before }}">Next</a>
          {{range .Ops}}
          <table>
             <tr>
                <td><a href ="/{{ .Board }}/{{ .Tid }}">{{ .No }}</a></td>
+            </tr>
+            <tr>
                <td>Time posted: {{ .Time }}</td>
             </tr>
             <tr>
@@ -23,12 +28,18 @@
             </tr>
             <tr>
                <td>{{ .Sub }}</td>
+            </tr>
+            <tr>
                <td>{{ .Com }}</td>
             </tr>
          </table>
          </br>
          {{ end }}
 
-    </div>
-    </body>
+      </div>
+      {{ if .HasPrev}}
+      <a href = "/{{ (index .Ops 0).Board }}?after={{ .After }}">Prev</a>
+      {{ end }}
+      <a href = "/{{ (index .Ops 0).Board }}?before={{ .Before }}">Next</a>
+   </body>
 </html>
