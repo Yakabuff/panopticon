@@ -161,7 +161,11 @@ func writeFile(bytez []byte, isThumbnail bool, fullsizeHash string, shouldWrite 
 		return "", err
 	}
 
-	newpath = filepath.Join(newpath, sum)
+	if isThumbnail {
+		newpath = filepath.Join(newpath, fullsizeHash)
+	} else {
+		newpath = filepath.Join(newpath, sum)
+	}
 	fmt.Println(newpath)
 
 	_, errExist := os.Stat(newpath)
