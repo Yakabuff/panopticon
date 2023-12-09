@@ -38,13 +38,14 @@ func (r *redisClient) insertPid(board string, tid string, pid string) error {
 	return nil
 }
 func (r *redisClient) checkThreadExist(board string, tid string) (bool, error) {
-	_, err := r.conn.Get(r.ctx, board+tid).Result()
-	if err == redis.Nil {
-		return false, nil
-	} else if err == nil {
+	val, err := r.conn.Exists(r.ctx, board+tid).Result()
+	if err != nil {
+		return false, err
+	}
+	if val > 0 {
 		return true, nil
 	} else {
-		return false, err
+		return false, nil
 	}
 }
 
