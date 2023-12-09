@@ -149,10 +149,15 @@ func writeFile(bytez []byte, isThumbnail bool, fullsizeHash string, shouldWrite 
 	if !shouldWrite {
 		return sum, nil
 	}
-
+	var newpath string
 	//create file with first 2 digits of hash as folder
-	newpath := filepath.Join(path, sum[0:2])
-	fmt.Println(newpath)
+	if !isThumbnail {
+		newpath = filepath.Join(path, sum[0:2])
+		fmt.Println(newpath)
+	} else {
+		newpath = filepath.Join(path, fullsizeHash[0:2])
+		fmt.Println(newpath)
+	}
 
 	err := os.MkdirAll(newpath, os.ModePerm)
 	if err != nil {
