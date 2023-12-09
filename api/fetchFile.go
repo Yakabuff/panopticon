@@ -88,6 +88,8 @@ func (a *App) serveFile(w http.ResponseWriter, r *http.Request) {
 		path = os.Getenv("THUMB_PATH")
 	} else if imageType == "full" {
 		path = os.Getenv("MEDIA_PATH")
+	} else {
+		path = os.Getenv("MEDIA_PATH")
 	}
 	path = filepath.FromSlash(path + "/" + hash[0:1] + hash[1:2] + "/" + hash)
 	fmt.Println(path)
