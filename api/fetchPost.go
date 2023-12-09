@@ -23,7 +23,7 @@ func (a *App) fetchPosts(w http.ResponseWriter, r *http.Request) {
 	board := r.URL.Query().Get("board")
 	hasImage := r.URL.Query().Get("hasImage")
 
-	if tid != "" || pid != "" {
+	if tid != "" && pid != "" {
 		b, err := a.db.getPostsByID(tid, pid)
 		if err != nil {
 			fmt.Println(err)
