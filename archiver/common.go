@@ -8,17 +8,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-
-	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 type ImageBoard interface {
 	fetchThread(Task, *dbClient) (any, error)
 	fetchBoards() ([]string, error)
 	fetchCatalog(Task) (any, error)
-	fetchMedia(Task, *dbClient, *lru.Cache[string, any]) (Media, error)
+	fetchMedia(Task, *dbClient, *redisClient) (Media, error)
 	getType() ImageboardType
-	threadWorker(any, *dbClient, *lru.Cache[string, any]) error
+	threadWorker(any, *dbClient, *redisClient) error
 	threadWatcher(db *dbClient, h chan Task)
 	mediaWatcher(db *dbClient, h chan Task)
 	mediaWorker(media Media, db *dbClient)
@@ -61,6 +59,7 @@ type ThreadTask struct {
 	LastArchived int64
 	Replies      int
 	Page         int
+	Tid          string
 }
 
 type MediaTask struct {

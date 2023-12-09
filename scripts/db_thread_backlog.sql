@@ -6,5 +6,6 @@ CREATE TABLE thread_backlog (
   last_archived BIGINT NOT NULL,
   replies BIGINT NOT NULL,
   page BIGINT,
+  tid TEXT NOT NULL,
   UNIQUE(board, no)
 );

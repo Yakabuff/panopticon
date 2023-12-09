@@ -37,7 +37,7 @@ func (a *Archiver) httpWorker() {
 			}
 		case MEDIA:
 			fmt.Println("HTTP: received media task " + task.filename)
-			m, err := a.imageboard.fetchMedia(task, &a.db, a.lru)
+			m, err := a.imageboard.fetchMedia(task, &a.db, a.cache)
 			if err != nil && !errors.Is(err, ErrInvalidStatusCode) {
 				fmt.Println(err)
 			} else {

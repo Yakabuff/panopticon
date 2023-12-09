@@ -5,19 +5,14 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
-
-	mapset "github.com/deckarep/golang-set/v2"
 )
 
 type dbClient struct {
 	conn *sql.DB
 	// hash(board + thread id) -> set(post ids)
-	store map[string]mapset.Set[string]
-	mu    sync.Mutex
+	cache *redisClient
 }
 
 func (d *dbClient) insertBoard(b Board) error {
@@ -27,8 +22,8 @@ func (d *dbClient) insertBoard(b Board) error {
 }
 
 func (d *dbClient) insertThreadTask(tt ThreadTask) error {
-	stmt := "INSERT INTO thread_backlog(board, no, last_modified, last_archived, replies, page) values ($1, $2, $3, $4, $5, $6) ON CONFLICT (board, no) DO UPDATE SET last_modified = $3, page = $6"
-	_, err := d.conn.Exec(stmt, tt.Board, tt.No, tt.LastModified, tt.LastArchived, tt.Replies, tt.Page)
+	stmt := "INSERT INTO thread_backlog(board, no, last_modified, last_archived, replies, page, tid) values ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (board, no) DO UPDATE SET last_modified = $3, page = $6"
+	_, err := d.conn.Exec(stmt, tt.Board, tt.No, tt.LastModified, tt.LastArchived, tt.Replies, tt.Page, tt.Tid)
 	return err
 }
 
@@ -71,7 +66,7 @@ func (d *dbClient) fetchMediaTask() ([]MediaTask, error) {
 func (d *dbClient) fetchThreadTask() ([]ThreadTask, error) {
 	var tasks []ThreadTask
 	now := time.Now()
-	stmt := "SELECT no, board, last_modified, last_archived, replies, page FROM thread_backlog where last_modified > last_archived AND last_archived < $1 ORDER BY page DESC LIMIT 250"
+	stmt := "SELECT no, board, last_modified, last_archived, replies, page, tid FROM thread_backlog where last_modified > last_archived AND last_archived < $1 ORDER BY page DESC LIMIT 250"
 	// Fetch only threads that were archived more than 10 seconds ago
 	rows, err := d.conn.Query(stmt, int(now.Unix()-10))
 	if err != nil {
@@ -83,7 +78,7 @@ func (d *dbClient) fetchThreadTask() ([]ThreadTask, error) {
 		var task ThreadTask
 
 		if err := rows.Scan(&task.No, &task.Board, &task.LastModified,
-			&task.LastArchived, &task.Replies, &task.Page); err != nil {
+			&task.LastArchived, &task.Replies, &task.Page, &task.Tid); err != nil {
 			return tasks, err
 		}
 		// fmt.Printf("Retrieved task: %d Board: %s\n", task.No, task.Board)
@@ -104,9 +99,7 @@ func (d *dbClient) deleteThreadTask(tt ThreadTask) error {
 	}
 	// Delete all posts from thread from post store
 	fmt.Printf("Deleted thread task from store no: %d board: %s\n", tt.No, tt.Board)
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	delete(d.store, tt.Board+strconv.Itoa(tt.No))
+	d.cache.deleteTid(tt.Board, tt.Tid)
 	return nil
 }
 
@@ -122,12 +115,14 @@ func (d *dbClient) deleteMediaTask(mt MediaTask) error {
 
 func (d *dbClient) insertPost(board string, no int, resto int, time int, name string, trip string, com string, tid string, pid string, hasImage bool) error {
 	stmt := "INSERT INTO post(no, resto, time, name, trip, com, board, tid, pid, has_image) values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING;"
-	post := strconv.Itoa(no)
-	boardThread := board + strconv.Itoa(resto)
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	_, ok := d.store[boardThread]
-	// Check if key exists
+
+	ok, err := d.cache.checkPidExist(board, tid, pid)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// Check if pid exists in boardtid cache.  If exists, don't insert into db
+	// Else insert into db and insert into cache
 	if !ok {
 		fmt.Println("inserting post from " + tid)
 		_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board, tid, pid, hasImage)
@@ -135,41 +130,35 @@ func (d *dbClient) insertPost(board string, no int, resto int, time int, name st
 			fmt.Println(err)
 			return err
 		}
-		if d.store[boardThread] == nil {
-			d.store[boardThread] = mapset.NewSet[string]()
-			d.store[boardThread].Add(post)
-		} else {
-			d.store[boardThread].Add(post)
+		err = d.cache.insertPid(board, tid, pid)
+		if err != nil {
+			fmt.Println(err)
 		}
 	} else {
-		if d.store[boardThread].Contains(post) {
-			fmt.Printf("Post %d board %s in store: skipping", no, board)
-		} else {
-			fmt.Println("inserting post from " + tid)
-			_, err := d.conn.Exec(stmt, no, resto, time, name, trip, com, board, tid, pid, hasImage)
-			if err != nil {
-				fmt.Println(err)
-				return err
-			}
-			d.store[boardThread].Add(post)
-		}
+		fmt.Println("skipping tid: " + tid + " pid: " + pid)
 	}
 	return nil
 }
 
 func (d *dbClient) insertThread(board string, no int, time int, name string, trip string, sub string, com string, replies int, images int, tid string, hasImage bool) error {
 	stmt := "INSERT INTO thread(no, time, name, trip, sub, com, replies, images, board, tid, has_image) values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT DO NOTHING;"
-	boardThread := board + strconv.Itoa(no)
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	_, ok := d.store[boardThread]
+	// check if board thread key exists
+	// if not, create key with set. store value 0 in set. insert into db
+	// else skip
+	ok, err := d.cache.checkThreadExist(board, tid)
+	if err != nil {
+		fmt.Println(err)
+	}
 	if !ok {
 		_, err := d.conn.Exec(stmt, no, time, name, trip, sub, com, replies, images, board, tid, hasImage)
 		if err != nil {
 			return err
 		}
 		// Add thread to store
-		d.store[boardThread] = mapset.NewSet[string]()
+		err = d.cache.insertPid(board, tid, "0")
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

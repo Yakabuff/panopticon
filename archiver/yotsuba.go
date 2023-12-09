@@ -13,8 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 type YotsubaCatalogPage struct {
@@ -142,7 +140,7 @@ func (y *Yotsuba) fetchThread(task Task, db *dbClient) (any, error) {
 
 // Download image/thumb and get sha256 hash and mime type
 // Insert md5 of media into LRU cache ASAP to prevent img/thumbnail from downloading again
-func (y *Yotsuba) fetchMedia(task Task, db *dbClient, lru *lru.Cache[string, any]) (Media, error) {
+func (y *Yotsuba) fetchMedia(task Task, db *dbClient, cache *redisClient) (Media, error) {
 	isThumbnail := y.isThumbnail(task.filename)
 	img, err := http.Get(y.API_IMG + "/" + task.board + "/" + task.filename)
 	if err != nil {
@@ -180,7 +178,11 @@ func (y *Yotsuba) fetchMedia(task Task, db *dbClient, lru *lru.Cache[string, any
 		fmt.Println(err)
 		return Media{}, err
 	}
-	lru.Add(task.hash, nil)
+	//lru.Add(task.hash, nil)
+	err = cache.insertHash(task.hash)
+	if err != nil {
+		fmt.Println(err)
+	}
 	return Media{Sha256: hash, Mime: mimeType, Md5: task.hash, File: task.filename, Board: task.board, IsThumbnail: isThumbnail}, nil
 }
 
@@ -214,7 +216,7 @@ func (y *Yotsuba) fetchBoards() ([]string, error) {
 	return res, nil
 }
 
-func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, any]) error {
+func (y *Yotsuba) threadWorker(thread any, db *dbClient, cache *redisClient) error {
 
 	z := thread.(Thread)
 	board := z.Board
@@ -277,7 +279,12 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, lru *lru.Cache[string, 
 		}
 		// Queue image if present in thread
 		// and hash does not already exist in LRU cache and image enabled for board
-		_, mediaCached := lru.Get(t.Md5)
+		//_, mediaCached := lru.Get(t.Md5)
+		mediaCached, err := cache.checkHashExists(t.Md5)
+		if err != nil {
+			fmt.Println(err)
+		}
+
 		if t.Filename != "" && !mediaCached {
 			// Insert file mapping and media info
 			fileid, err := db.insertMedia("", t.Md5, t.W, t.H, t.Fsize, "")
@@ -415,16 +422,19 @@ func (y *Yotsuba) mediaWorker(media Media, db *dbClient) {
 			Board:     media.Board,
 			DateAdded: time.Now().Unix(),
 			File:      filename,
+			Hash:      media.Sha256,
 		})
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
-	err := db.updateMedia(media.Sha256, media.Mime, media.Md5, 0, 0, 0, media.Md5)
-	if err != nil {
-		fmt.Println(err)
+	if !media.IsThumbnail {
+		err := db.updateMedia(media.Sha256, media.Mime, media.Md5, 0, 0, 0, media.Md5)
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
-	err = db.deleteMediaTask(MediaTask{File: media.File, Board: media.Board})
+	err := db.deleteMediaTask(MediaTask{File: media.File, Board: media.Board})
 	if err != nil {
 		fmt.Println(err)
 	}

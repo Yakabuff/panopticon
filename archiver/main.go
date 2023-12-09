@@ -10,8 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	mapset "github.com/deckarep/golang-set/v2"
-	lru "github.com/hashicorp/golang-lru/v2"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 )
@@ -36,7 +34,7 @@ type Archiver struct {
 	boardMetaWorkerChannel chan []string
 	imageboard             ImageBoard
 	db                     dbClient
-	lru                    *lru.Cache[string, any]
+	cache                  *redisClient
 }
 
 func newArchiver() *Archiver {
@@ -55,14 +53,21 @@ func (a *Archiver) init() {
 		os.Exit(1)
 	}
 
-	l, err := lru.New[string, any](1000000)
+	rdb, err := redisInit()
+
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintf(os.Stderr, "Unable to connect to redis cache: %v\n", err)
 		os.Exit(1)
 	}
-	a.lru = l
 
-	a.db = dbClient{conn: db, store: make(map[string]mapset.Set[string])}
+	// l, err := lru.New[string, any](1000000)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	os.Exit(1)
+	// }
+	a.cache = rdb
+
+	a.db = dbClient{conn: db, cache: rdb}
 	defer db.Close()
 
 	a.httpWorkerChannel = make(chan Task)
@@ -129,7 +134,7 @@ func (a *Archiver) threadWorker() {
 	for {
 		t := <-a.threadWorkerChannel
 
-		a.imageboard.threadWorker(t, &a.db, a.lru)
+		a.imageboard.threadWorker(t, &a.db, a.cache)
 	}
 
 }

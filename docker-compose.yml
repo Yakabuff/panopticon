@@ -12,6 +12,21 @@ services:
     ports:
       - "5434:5432"
 
+  redis:
+    image: redis:7.0.12-alpine3.18
+    container_name: redis-panopticon
+    command: redis-server
+    healthcheck:
+      test: ["CMD", "redis-cli","ping"]
+      timeout: 10s
+      retries: 10
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data 
+
 volumes:
   pg_enigma:
+    driver: local
+  redis_data:
     driver: local
