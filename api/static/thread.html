@@ -33,9 +33,11 @@
                <td>{{ .No }}</td>
                <td>Time posted: {{ .Time }}</td>
             </tr>
+            {{ if .HasImage }}
             <tr>
                <td> <img src="/file?tid={{ .Tid }}&pid={{ .Pid }}&type=thumb"></img></td>
             </tr>
+            {{ end }}
             <tr>
                <td colspan="2">{{ .Com }}</td>
             </tr>

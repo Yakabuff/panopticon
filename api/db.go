@@ -171,13 +171,13 @@ func (d *dbClient) getPostsByID(tid string, pid string) ([]Post, error) {
 	var err error
 
 	if tid != "" && pid == "" {
-		stmt = "SELECT no, resto, time, name, trip, com, board, tid, pid FROM post WHERE tid = $1"
+		stmt = "SELECT no, resto, time, name, trip, com, board, tid, pid, has_image FROM post WHERE tid = $1"
 		rows, err = d.conn.Query(stmt, tid)
 	} else if tid == "" && pid != "" {
-		stmt = "SELECT no, resto, time, name, trip, com, board, tid, pid FROM post WHERE pid = $2"
+		stmt = "SELECT no, resto, time, name, trip, com, board, tid, pid, has_image FROM post WHERE pid = $2"
 		rows, err = d.conn.Query(stmt, pid)
 	} else if tid != "" && pid != "" {
-		stmt = "SELECT no, resto, time, name, trip, com, board, tid, pid FROM post WHERE tid = $1 and pid = $2"
+		stmt = "SELECT no, resto, time, name, trip, com, board, tid, pid, has_image FROM post WHERE tid = $1 and pid = $2"
 		rows, err = d.conn.Query(stmt, tid, pid)
 	}
 
@@ -189,7 +189,7 @@ func (d *dbClient) getPostsByID(tid string, pid string) ([]Post, error) {
 	for rows.Next() {
 		var post Post
 		if err := rows.Scan(&post.No, &post.Resto, &post.Time, &post.Name, &post.Trip, &post.Com,
-			&post.Board, &post.Tid, &post.Pid); err != nil {
+			&post.Board, &post.Tid, &post.Pid, &post.HasImage); err != nil {
 			return posts, err
 		}
 		posts = append(posts, post)

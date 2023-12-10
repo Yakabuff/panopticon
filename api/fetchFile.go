@@ -66,14 +66,14 @@ func (a *App) serveFile(w http.ResponseWriter, r *http.Request) {
 			fms, err = a.db.getFileMapping(tid, pid, true)
 		}
 		if len(fms) == 0 || err != nil {
-			//fmt.Println(err)
+			fmt.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		fileId := fms[0].FileID
 		file, err := a.db.getFileMeta(fileId, "", "", 0, 0, 0, "")
 		if err != nil {
-			//fmt.Println(err)
+			fmt.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
