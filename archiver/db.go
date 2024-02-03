@@ -99,7 +99,7 @@ func (d *dbClient) deleteThreadTask(tt ThreadTask) error {
 	}
 	// Delete all posts from thread from post store
 	fmt.Printf("Deleted thread task from store no: %d board: %s\n", tt.No, tt.Board)
-	d.cache.deleteTid(tt.Board, tt.Tid)
+	d.cache.deleteTid(tt.Tid)
 	return nil
 }
 
@@ -116,7 +116,7 @@ func (d *dbClient) deleteMediaTask(mt MediaTask) error {
 func (d *dbClient) insertPost(board string, no int, resto int, time int, name string, trip string, com string, tid string, pid string, hasImage bool) error {
 	stmt := "INSERT INTO post(no, resto, time, name, trip, com, board, tid, pid, has_image) values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING;"
 
-	ok, err := d.cache.checkPidExist(board, tid, pid)
+	ok, err := d.cache.checkPidExist(tid, pid)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -130,7 +130,7 @@ func (d *dbClient) insertPost(board string, no int, resto int, time int, name st
 			fmt.Println(err)
 			return err
 		}
-		err = d.cache.insertPid(board, tid, pid)
+		err = d.cache.insertPid(tid, pid)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -145,7 +145,7 @@ func (d *dbClient) insertThread(board string, no int, time int, name string, tri
 	// check if board thread key exists
 	// if not, create key with set. store value 0 in set. insert into db
 	// else skip
-	ok, err := d.cache.checkThreadExist(board, tid)
+	ok, err := d.cache.checkThreadExist(tid)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -155,7 +155,7 @@ func (d *dbClient) insertThread(board string, no int, time int, name string, tri
 			return err
 		}
 		// Add thread to store
-		err = d.cache.insertPid(board, tid, "0")
+		err = d.cache.insertPid(tid, "0")
 		if err != nil {
 			return err
 		}

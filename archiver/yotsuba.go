@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -230,8 +230,8 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, cache *redisClient) err
 	}
 	// Sort to get op thread ID
 	sort.Slice(x.Posts, func(i, j int) bool { return x.Posts[i].No < x.Posts[j].No })
-	// Calculate internal tid hash(thread number, thread time, board)
-	tid := fmt.Sprintf("%x", sha256.Sum256([]byte(strconv.Itoa(x.Posts[0].No)+strconv.Itoa(x.Posts[0].Time)+board)))
+	// Calculate internal tid base64(thread number, thread time, board)
+	tid := base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(x.Posts[0].No) + "-" + strconv.Itoa(x.Posts[0].Time) + "-" + board))
 	fmt.Println("threadWorker tid " + tid)
 	for _, t := range x.Posts {
 		if t.Resto == 0 {
@@ -270,7 +270,7 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, cache *redisClient) err
 			} else {
 				hasImage = true
 			}
-			pid := fmt.Sprintf("%x", sha256.Sum256([]byte(strconv.Itoa(t.No)+strconv.Itoa(t.Time)+board)))
+			pid := base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(t.No) + "-" + strconv.Itoa(t.Time) + "-" + board))
 			fmt.Println("insert post " + pid)
 			err := db.insertPost(board, t.No, t.Resto, t.Time, t.Name, t.Trip, t.Com, tid, pid, hasImage)
 			if err != nil {
@@ -293,7 +293,7 @@ func (y *Yotsuba) threadWorker(thread any, db *dbClient, cache *redisClient) err
 			}
 			var pid string
 			if t.Resto != 0 {
-				pid = fmt.Sprintf("%x", sha256.Sum256([]byte(strconv.Itoa(t.No)+strconv.Itoa(t.Time)+board)))
+				pid = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(t.No) + "-" + strconv.Itoa(t.Time) + "-" + board))
 			}
 			err = db.insertFileMapping(t.Filename, t.No, strconv.Itoa(t.Tim), t.Ext, board, fileid, tid, pid)
 			if err != nil {

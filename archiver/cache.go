@@ -29,16 +29,16 @@ func redisInit() (*redisClient, error) {
 	return &redisClient{conn: rdb, ctx: ctx}, nil
 }
 
-func (r *redisClient) insertPid(board string, tid string, pid string) error {
-	err := r.conn.SAdd(r.ctx, board+tid, pid).Err()
+func (r *redisClient) insertPid(tid string, pid string) error {
+	err := r.conn.SAdd(r.ctx, tid, pid).Err()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 	return nil
 }
-func (r *redisClient) checkThreadExist(board string, tid string) (bool, error) {
-	val, err := r.conn.Exists(r.ctx, board+tid).Result()
+func (r *redisClient) checkThreadExist(tid string) (bool, error) {
+	val, err := r.conn.Exists(r.ctx, tid).Result()
 	if err != nil {
 		return false, err
 	}
@@ -49,8 +49,8 @@ func (r *redisClient) checkThreadExist(board string, tid string) (bool, error) {
 	}
 }
 
-func (r *redisClient) deleteTid(board string, tid string) error {
-	err := r.conn.Del(r.ctx, board+tid).Err()
+func (r *redisClient) deleteTid(tid string) error {
+	err := r.conn.Del(r.ctx, tid).Err()
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -58,8 +58,8 @@ func (r *redisClient) deleteTid(board string, tid string) error {
 	return err
 }
 
-func (r *redisClient) checkPidExist(board string, tid string, pid string) (bool, error) {
-	res, err := r.conn.SIsMember(r.ctx, board+tid, pid).Result()
+func (r *redisClient) checkPidExist(tid string, pid string) (bool, error) {
+	res, err := r.conn.SIsMember(r.ctx, tid, pid).Result()
 	if err != nil {
 		return false, err
 	}

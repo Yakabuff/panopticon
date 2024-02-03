@@ -60,46 +60,44 @@ func (a *Archiver) init() {
 		os.Exit(1)
 	}
 
-	// l, err := lru.New[string, any](1000000)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	os.Exit(1)
-	// }
 	a.cache = rdb
 
 	a.db = dbClient{conn: db, cache: rdb}
 	defer db.Close()
 
 	a.httpWorkerChannel = make(chan Task)
-	a.threadWorkerChannel = make(chan any)
-	a.boardWorkerChannel = make(chan any)
-	a.mediaWorkerChannel = make(chan Media)
-	a.boardMetaWorkerChannel = make(chan []string)
-
 	go a.httpWorker()
-	go a.threadWatcher()
-	go a.mediaWatcher()
-
-	for w := 0; w <= 3; w++ {
-		go a.threadWorker()
+	if strings.Contains(os.Getenv("DOWNLOAD_POSTS"), "true") {
+		a.threadWorkerChannel = make(chan any)
 	}
-
-	for w := 0; w <= 3; w++ {
-		go a.mediaWorker()
+	if strings.Contains(os.Getenv("DOWNLOAD_MEDIA"), "true") {
+		a.mediaWorkerChannel = make(chan Media)
+		go a.mediaWatcher()
+		for w := 0; w <= 3; w++ {
+			go a.mediaWorker()
+		}
 	}
+	if strings.Contains(os.Getenv("FETCH_THREADS"), "true") {
+		a.boardMetaWorkerChannel = make(chan []string)
+		a.boardWorkerChannel = make(chan any)
+		go a.threadWatcher()
+		for w := 0; w <= 3; w++ {
+			go a.threadWorker()
+		}
 
-	// Check if board exists on imageboard before running board watcher
-	// If exists, insert into DB
-	// If not exist, skip
-	a.httpWorkerChannel <- Task{taskType: BOARDMETA}
-	boards := <-a.boardMetaWorkerChannel
-	for _, b := range a.boards {
-		if stringInSlice(b, boards) {
-			err := a.db.insertBoard(Board{board: b, unlisted: false})
-			if err != nil {
-				fmt.Println(err)
-			} else {
-				go a.watchBoard(b)
+		// Check if board exists on imageboard before running board watcher
+		// If exists, insert into DB
+		// If not exist, skip
+		a.httpWorkerChannel <- Task{taskType: BOARDMETA}
+		boards := <-a.boardMetaWorkerChannel
+		for _, b := range a.boards {
+			if stringInSlice(b, boards) {
+				err := a.db.insertBoard(Board{board: b, unlisted: false})
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					go a.watchBoard(b)
+				}
 			}
 		}
 	}

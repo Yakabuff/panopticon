@@ -61,6 +61,6 @@ func (a *Archiver) httpWorker() {
 			sleep = 1
 		}
 		fmt.Printf("HTTP: sleeping %d second\n", sleep)
-		time.Sleep(time.Duration(sleep) * time.Second)
+		time.Sleep(time.Duration(float64(sleep) * float64(time.Second)))
 	}
 }
